@@ -212,7 +212,12 @@
                     "description": "Minimum coverage in validation data. If FORMAT/DP is missing and -min_val_dp > 0, the program exits with an error. Set to zero to have no filter of if using \u2013gt-validation",
                     "default": 5,
                     "pattern": "^\\d+$"
-                }
+                },
+                "gt_val": {
+                    "type": "boolean",
+                    "description": "Use genotype-based validation instead of genotype likelihoods. Required for compatibility with FreeBayes-style GL fields.",
+                    "default": false
+}
             }
         },
         "reference_genome_options": {
