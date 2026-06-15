@@ -426,7 +426,7 @@ get_input_snp_count <- function(input_path, base_dir) {
 
 # UI
 ui <- fluidPage(
-  title = "phaseimpute QC Report",
+  title = "QC Report for nf-core/phaseimpute",
 
   tags$head(
     tags$link(rel = "stylesheet", type = "text/css", href = "custom.css"),
