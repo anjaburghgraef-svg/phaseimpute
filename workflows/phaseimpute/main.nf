@@ -34,6 +34,7 @@ include { VCF_SITES_EXTRACT_BCFTOOLS                 } from '../../subworkflows/
 include { VCF_PHASE_SHAPEIT5                         } from '../../subworkflows/local/vcf_phase_shapeit5'
 include { VCF_CONCATENATE_BCFTOOLS as CONCAT_PANEL   } from '../../subworkflows/local/vcf_concatenate_bcftools'
 include { BCFTOOLS_STATS as BCFTOOLS_STATS_PANEL     } from '../../modules/nf-core/bcftools/stats'
+include { GENERATE_QC_METRICS                        } from '../../modules/local/generate_summary_stats'
 include { chunkPrepareChannel                        } from './function.nf'
 
 // Imputation
@@ -79,9 +80,6 @@ include { VCF_SPLIT_BCFTOOLS as SPLIT_TRUTH          } from '../../subworkflows/
 include { BCFTOOLS_STATS as BCFTOOLS_STATS_TRUTH     } from '../../modules/nf-core/bcftools/stats'
 include { VCF_CONCATENATE_BCFTOOLS as CONCAT_TRUTH   } from '../../subworkflows/local/vcf_concatenate_bcftools'
 include { VCF_CONCORDANCE_GLIMPSE2                   } from '../../subworkflows/local/vcf_concordance_glimpse2'
-
-// Added by Anja
-include { GENERATE_QC_METRICS                        } from '../../modules/local/generate_summary_stats'
 
 
 /*
@@ -624,30 +622,14 @@ workflow PHASEIMPUTE {
         ch_panel_vcf_stats = Channel.of([file("NO_FILE")])
     }
 
-    // Collect validation VCFs (imputed samples split by SPLIT_IMPUTED, which have INFO scores)
-    ch_validation_vcfs = Channel.empty()
-    if (params.steps.split(',').contains("impute")) {
-        // Use SPLIT_IMPUTED output (imputed samples with INFO scores)
-        // These are the 500 imputed samples split from concatenated tool outputs
-        ch_validation_vcfs = SPLIT_IMPUTED.out.vcf_tbi
-            .map { meta, vcf, index -> vcf }
-            .collect()
-            .ifEmpty([file("NO_FILE")])
-    } else {
-        ch_validation_vcfs = Channel.of([file("NO_FILE")])
-    }
-
-    // Generate all QC metrics
+    // Generate all QC metrics (just summary stats)
     GENERATE_QC_METRICS(
         ch_target_vcf,
         ch_truth_vcf_stats,
-        ch_panel_vcf_stats,
-        ch_validation_vcfs
+        ch_panel_vcf_stats
     )
     ch_versions = ch_versions.mix(GENERATE_QC_METRICS.out.versions)
     ch_multiqc_files = ch_multiqc_files.mix(GENERATE_QC_METRICS.out.summary_stats)
-    ch_multiqc_files = ch_multiqc_files.mix(GENERATE_QC_METRICS.out.chr_accuracy.ifEmpty([]))
-    ch_multiqc_files = ch_multiqc_files.mix(GENERATE_QC_METRICS.out.info_scores.ifEmpty([]))
 
     //
     // Collate and save software versions
