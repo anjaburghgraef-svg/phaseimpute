@@ -80,6 +80,9 @@ include { BCFTOOLS_STATS as BCFTOOLS_STATS_TRUTH     } from '../../modules/nf-co
 include { VCF_CONCATENATE_BCFTOOLS as CONCAT_TRUTH   } from '../../subworkflows/local/vcf_concatenate_bcftools'
 include { VCF_CONCORDANCE_GLIMPSE2                   } from '../../subworkflows/local/vcf_concordance_glimpse2'
 
+// Added by Anja
+include { GENERATE_QC_METRICS                        } from '../../modules/local/generate_summary_stats'
+
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -566,6 +569,85 @@ workflow PHASEIMPUTE {
         ch_multiqc_files = ch_multiqc_files.mix(VCF_CONCORDANCE_GLIMPSE2.out.multiqc_files)
         ch_versions      = ch_versions.mix(VCF_CONCORDANCE_GLIMPSE2.out.versions)
     }
+
+    //
+    // Generate summary statistics (runs after all workflow steps)
+    // Collect all VCF files from input CSVs
+    //
+
+    // Get all target VCF files from input CSV
+    ch_target_vcf = Channel.empty()
+    if (params.input) {
+        ch_target_vcf = Channel
+            .fromPath(params.input)
+            .splitCsv(header: true)
+            .map { row -> 
+                def vcf_path = row.containsKey('file') ? row.file : row.vcf
+                file(vcf_path)
+            }
+            .collect()
+            .ifEmpty([file("NO_FILE")])
+    } else {
+        ch_target_vcf = Channel.of([file("NO_FILE")])
+    }
+
+    // Get all truth VCF files from truth CSV
+    ch_truth_vcf_stats = Channel.empty()
+    if (params.input_truth) {
+        ch_truth_vcf_stats = Channel
+            .fromPath(params.input_truth)
+            .splitCsv(header: true)
+            .map { row -> 
+                def vcf_path = row.containsKey('file') ? row.file : row.vcf
+                file(vcf_path)
+            }
+            .collect()
+            .ifEmpty([file("NO_FILE")])
+    } else {
+        ch_truth_vcf_stats = Channel.of([file("NO_FILE")])
+    }
+
+    // Get all panel VCF files from panel CSV
+    ch_panel_vcf_stats = Channel.empty()
+    if (params.panel) {
+        ch_panel_vcf_stats = Channel
+            .fromPath(params.panel)
+            .splitCsv(header: true)
+            .map { row -> 
+                def vcf_path = row.containsKey('vcf') ? row.vcf : (row.containsKey('file') ? row.file : null)
+                vcf_path ? file(vcf_path) : null
+            }
+            .filter { it != null }
+            .collect()
+            .ifEmpty([file("NO_FILE")])
+    } else {
+        ch_panel_vcf_stats = Channel.of([file("NO_FILE")])
+    }
+
+    // Collect validation VCFs (imputed samples split by SPLIT_IMPUTED, which have INFO scores)
+    ch_validation_vcfs = Channel.empty()
+    if (params.steps.split(',').contains("impute")) {
+        // Use SPLIT_IMPUTED output (imputed samples with INFO scores)
+        // These are the 500 imputed samples split from concatenated tool outputs
+        ch_validation_vcfs = SPLIT_IMPUTED.out.vcf_tbi
+            .map { meta, vcf, index -> vcf }
+            .collect()
+            .ifEmpty([file("NO_FILE")])
+    } else {
+        ch_validation_vcfs = Channel.of([file("NO_FILE")])
+    }
+
+    // Generate all QC metrics
+    GENERATE_QC_METRICS(
+        ch_target_vcf,
+        ch_truth_vcf_stats,
+        ch_panel_vcf_stats,
+        ch_validation_vcfs
+    )
+    ch_versions = ch_versions.mix(GENERATE_QC_METRICS.out.versions)
+    ch_multiqc_files = ch_multiqc_files.mix(GENERATE_QC_METRICS.out.summary_stats)
+    ch_multiqc_files = ch_multiqc_files.mix(GENERATE_QC_METRICS.out.chr_accuracy.ifEmpty([]))
+    ch_multiqc_files = ch_multiqc_files.mix(GENERATE_QC_METRICS.out.info_scores.ifEmpty([]))
 
     //
     // Collate and save software versions
