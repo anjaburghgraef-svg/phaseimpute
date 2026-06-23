@@ -34,7 +34,6 @@ include { VCF_SITES_EXTRACT_BCFTOOLS                 } from '../../subworkflows/
 include { VCF_PHASE_SHAPEIT5                         } from '../../subworkflows/local/vcf_phase_shapeit5'
 include { VCF_CONCATENATE_BCFTOOLS as CONCAT_PANEL   } from '../../subworkflows/local/vcf_concatenate_bcftools'
 include { BCFTOOLS_STATS as BCFTOOLS_STATS_PANEL     } from '../../modules/nf-core/bcftools/stats'
-include { GENERATE_QC_METRICS                        } from '../../modules/local/generate_summary_stats'
 include { chunkPrepareChannel                        } from './function.nf'
 
 // Imputation
@@ -81,6 +80,20 @@ include { BCFTOOLS_STATS as BCFTOOLS_STATS_TRUTH     } from '../../modules/nf-co
 include { VCF_CONCATENATE_BCFTOOLS as CONCAT_TRUTH   } from '../../subworkflows/local/vcf_concatenate_bcftools'
 include { VCF_CONCORDANCE_GLIMPSE2                   } from '../../subworkflows/local/vcf_concordance_glimpse2'
 
+////Anja's additions
+// conformation step of the target dataset, before imputation
+include { VCF_CONFORM_GT                             } from '../../subworkflows/local/vcf_conform_gt'
+
+// Generate QC metrics
+include { GENERATE_QC_METRICS                        } from '../../modules/local/generate_summary_stats'
+
+// VCF to PLINK conversion modules (one alias per imputation tool)
+include { PLINK_VCF as PLINK_VCF_BEAGLE5             } from '../../modules/nf-core/plink/vcf/main'
+include { PLINK_VCF as PLINK_VCF_GLIMPSE1            } from '../../modules/nf-core/plink/vcf/main'
+include { PLINK_VCF as PLINK_VCF_GLIMPSE2            } from '../../modules/nf-core/plink/vcf/main'
+include { PLINK_VCF as PLINK_VCF_MINIMAC4            } from '../../modules/nf-core/plink/vcf/main'
+include { PLINK_VCF as PLINK_VCF_QUILT               } from '../../modules/nf-core/plink/vcf/main'
+include { PLINK_VCF as PLINK_VCF_STITCH              } from '../../modules/nf-core/plink/vcf/main'
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -103,6 +116,7 @@ workflow PHASEIMPUTE {
     ch_posfile              // channel: posfile       [ [id, chr], vcf, index, hap, legend]
     ch_chunks               // channel: chunks        [ [chr], txt]
     chunk_model             // parameter: chunk model
+    ch_conformgt_jar        // channel: conform-gt JAR file
     ch_versions             // channel: versions of software used
 
     main:
@@ -297,6 +311,26 @@ workflow PHASEIMPUTE {
             ch_panel_phased = ch_panel
         }
 
+        // Harmonize VCF targets to reference panel if enabled
+        if (params.conformgt) {
+            log.info("Harmonizing target VCFs to reference panel with conform-gt")
+
+            // Run harmonization - pass target VCF directly (not combined with regions)
+            VCF_CONFORM_GT(
+                ch_input_type.vcf,
+                ch_panel_phased,
+                ch_conformgt_jar
+            )
+            ch_versions = ch_versions.mix(VCF_CONFORM_GT.out.versions)
+
+            // Use harmonized VCF for downstream imputation (single file, like original input)
+            ch_input_type_vcf_harmonized = VCF_CONFORM_GT.out.vcf_tbi
+        } else {
+            // Use original VCF channel if conformgt disabled
+            ch_input_type_vcf_harmonized = ch_input_type.vcf
+        }
+
+
         if (params.tools.split(',').contains("glimpse1")) {
             log.info("Impute with GLIMPSE1")
 
@@ -316,7 +350,7 @@ workflow PHASEIMPUTE {
             ch_versions = ch_versions.mix(GL_GLIMPSE1.out.versions)
 
             // Combine vcf and processed bam
-            ch_input_glimpse1 = ch_input_type.vcf
+            ch_input_glimpse1 = ch_input_type_vcf_harmonized
                 .mix(GL_GLIMPSE1.out.vcf_tbi)
 
             // Run imputation
@@ -329,10 +363,14 @@ workflow PHASEIMPUTE {
 
             // Concatenate by chromosomes
             CONCAT_GLIMPSE1(VCF_IMPUTE_GLIMPSE1.out.vcf_tbi)
-            ch_versions = ch_versions.mix(CONCAT_GLIMPSE1.out.versions)
-
-            // Add results to input validate
+            
+            // Convert to PLINK format
+            PLINK_VCF_GLIMPSE1(
+                CONCAT_GLIMPSE1.out.vcf_tbi.map { meta, vcf, tbi -> [meta, vcf] }
+            )
+            
             ch_input_validate = ch_input_validate.mix(CONCAT_GLIMPSE1.out.vcf_tbi)
+            //ch_versions = ch_versions.mix(PLINK_VCF_GLIMPSE1.out.versions_plink)
 
         }
 
@@ -347,7 +385,7 @@ workflow PHASEIMPUTE {
             BAM_VCF_IMPUTE_GLIMPSE2(
                 ch_input_bams_withlist
                     .map{ [it[0], it[1], it[2], it[3]] }
-                    .mix(ch_input_type.vcf.combine(Channel.of([[]]))),
+                    .mix(ch_input_type_vcf_harmonized.combine(Channel.of([[]]))),
                 ch_panel_phased,
                 ch_chunks_glimpse2,
                 ch_fasta
@@ -355,10 +393,14 @@ workflow PHASEIMPUTE {
             ch_versions = ch_versions.mix(BAM_VCF_IMPUTE_GLIMPSE2.out.versions)
             // Concatenate by chromosomes
             CONCAT_GLIMPSE2(BAM_VCF_IMPUTE_GLIMPSE2.out.vcf_tbi)
-            ch_versions = ch_versions.mix(CONCAT_GLIMPSE2.out.versions)
-
-            // Add results to input validate
+            
+            // Convert to PLINK format
+            PLINK_VCF_GLIMPSE2(
+                CONCAT_GLIMPSE2.out.vcf_tbi.map { meta, vcf, tbi -> [meta, vcf] }
+            )
+            
             ch_input_validate = ch_input_validate.mix(CONCAT_GLIMPSE2.out.vcf_tbi)
+            //ch_versions = ch_versions.mix(PLINK_VCF_GLIMPSE2.out.versions_plink)
         }
 
         if (params.tools.split(',').contains("stitch")) {
@@ -375,10 +417,14 @@ workflow PHASEIMPUTE {
 
             // Concatenate by chromosomes
             CONCAT_STITCH(BAM_IMPUTE_STITCH.out.vcf_tbi)
-            ch_versions = ch_versions.mix(CONCAT_STITCH.out.versions)
-
-            // Add results to input validate
+            
+            // Convert to PLINK format
+            PLINK_VCF_STITCH(
+                CONCAT_STITCH.out.vcf_tbi.map { meta, vcf, tbi -> [meta, vcf] }
+            )
+            
             ch_input_validate = ch_input_validate.mix(CONCAT_STITCH.out.vcf_tbi)
+            //ch_versions = ch_versions.mix(PLINK_VCF_STITCH.out.versions_plink)
 
         }
 
@@ -401,15 +447,19 @@ workflow PHASEIMPUTE {
 
             // Concatenate by chromosomes
             CONCAT_QUILT(BAM_IMPUTE_QUILT.out.vcf_tbi)
-            ch_versions = ch_versions.mix(CONCAT_QUILT.out.versions)
-
-            // Add results to input validate
+            
+            // Convert to PLINK format
+            PLINK_VCF_QUILT(
+                CONCAT_QUILT.out.vcf_tbi.map { meta, vcf, tbi -> [meta, vcf] }
+            )
+            
             ch_input_validate = ch_input_validate.mix(CONCAT_QUILT.out.vcf_tbi)
+            //ch_versions = ch_versions.mix(PLINK_VCF_QUILT.out.versions_plink)
         }
 
         if (params.tools.split(',').contains("beagle5")) {
             // Create input channel combining VCF with regions
-            ch_input_beagle5 = ch_input_type.vcf
+            ch_input_beagle5 = ch_input_type_vcf_harmonized
                 .combine(ch_region)
                 .map { meta_vcf, vcf, index, meta_region, _region ->
                     [meta_vcf + meta_region, vcf, index]
@@ -425,17 +475,21 @@ workflow PHASEIMPUTE {
 
             // Concatenate by chromosomes
             CONCAT_BEAGLE5(VCF_IMPUTE_BEAGLE5.out.vcf_index)
-            ch_versions = ch_versions.mix(CONCAT_BEAGLE5.out.versions)
 
-            // Add results to input validate
+            // Convert to PLINK format
+            PLINK_VCF_BEAGLE5(
+                CONCAT_BEAGLE5.out.vcf_tbi.map { meta, vcf, tbi -> [meta, vcf] }
+            )
+            
             ch_input_validate = ch_input_validate.mix(CONCAT_BEAGLE5.out.vcf_tbi)
+            //ch_versions = ch_versions.mix(PLINK_VCF_BEAGLE5.out.versions_plink)
         }
 
         if (params.tools.split(',').contains("minimac4")) {
             log.info("Impute with MINIMAC4")
 
             // Create input channel combining VCF with regions
-            ch_input_minimac4 = ch_input_type.vcf
+            ch_input_minimac4 = ch_input_type_vcf_harmonized
                 .combine(ch_region)
                 .map { meta_vcf, vcf, index, meta_region, region ->
                     [meta_vcf + meta_region, vcf, index]
@@ -452,10 +506,14 @@ workflow PHASEIMPUTE {
 
             // Concatenate by chromosomes
             CONCAT_MINIMAC4(VCF_IMPUTE_MINIMAC4.out.vcf_index)
-            ch_versions = ch_versions.mix(CONCAT_MINIMAC4.out.versions)
-
-            // Add results to input validate
+            
+            // Convert to PLINK format
+            PLINK_VCF_MINIMAC4(
+                CONCAT_MINIMAC4.out.vcf_tbi.map { meta, vcf, tbi -> [meta, vcf] }
+            )
+            
             ch_input_validate = ch_input_validate.mix(CONCAT_MINIMAC4.out.vcf_tbi)
+            //ch_versions = ch_versions.mix(PLINK_VCF_MINIMAC4.out.versions_plink)
         }
 
         // Prepare renaming file

@@ -284,6 +284,15 @@ workflow PIPELINE_INITIALISATION {
     }
 
     //
+    // Create conform-gt JAR channel
+    //
+    if (params.conformgt) {
+        ch_conformgt_jar = Channel.of(file(params.conformgt_jar, checkIfExists: true))
+    } else {
+        ch_conformgt_jar = Channel.of([])
+    }
+
+    //
     // Check contigs name in different meta map
     //
     // Collect all chromosomes names in all different inputs
@@ -355,6 +364,7 @@ workflow PIPELINE_INITIALISATION {
     posfile              = ch_posfile       // [ [panel, chr], vcf, index, hap, legend ]
     chunks               = ch_chunks        // [ [chr], txt ]
     chunk_model          = chunk_model
+    conformgt_jar        = ch_conformgt_jar // [ conformgt.jar ]
     versions             = ch_versions
 }
 
