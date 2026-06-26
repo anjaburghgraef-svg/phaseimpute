@@ -1,0 +1,7 @@
+---
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - openjdk=8.0.312
+  - htslib=1.21

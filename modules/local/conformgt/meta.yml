@@ -1,0 +1,59 @@
+name: conformgt
+description: Conform target genotypes to reference panel allele coding
+keywords:
+  - genotype
+  - harmonization
+  - imputation
+  - allele
+tools:
+  - conformgt:
+      description: Conform target genotypes to match reference panel
+      homepage: https://faculty.washington.edu/browning/conform-gt.html
+      documentation: https://faculty.washington.edu/browning/conform-gt.html
+      tool_dev_url: https://faculty.washington.edu/browning/conform-gt.html
+      licence: ["Apache-2.0"]
+
+input:
+  - meta:
+      type: map
+      description: Groovy Map containing sample/chromosome information (must contain 'chr')
+  - target_vcf:
+      type: file
+      description: Target VCF/BCF file to harmonize
+      pattern: "*.{vcf,vcf.gz,bcf,bcf.gz}"
+  - target_index:
+      type: file
+      description: Index for target VCF
+      pattern: "*.{tbi,csi}"
+  - meta2:
+      type: map
+      description: Reference panel metadata
+  - ref_vcf:
+      type: file
+      description: Reference panel VCF file
+      pattern: "*.{vcf,vcf.gz,bcf,bcf.gz}"
+  - ref_index:
+      type: file
+      description: Index for reference VCF
+      pattern: "*.{tbi,csi}"
+  - conformgt_jar:
+      type: file
+      description: Path to conform-gt JAR file
+      pattern: "*.jar"
+
+output:
+  - meta:
+      type: map
+      description: Groovy Map containing sample information
+  - vcf_tbi:
+      type: file
+      description: Harmonized VCF with index
+      pattern: "*.vcf.gz"
+  - versions:
+      type: file
+      description: File containing software versions
+      pattern: "versions.yml"
+
+authors:
+  - "@louislenezet"
+  - "@atrigila"
