@@ -16,11 +16,10 @@
                     "type": "string",
                     "format": "file-path",
                     "exists": true,
-                    "schema": "assets/schema_input.json",
                     "mimetype": "text/csv",
                     "pattern": "^\\S+\\.(csv|tsv|yaml|json)$",
-                    "description": "Path to comma or tab-separated file, yaml or json file containing information about the samples in the experiment.",
-                    "help_text": "The file should contain at least 3 columns, and a header row: 'sample,file,index'. See [usage docs](https://nf-co.re/phaseimpute/usage#samplesheet-input).",
+                    "description": "Path to comma or tab-separated file containing sample information. Format auto-detected from CSV headers: VCF (sample,file,index), PLINK binary (sample,bed,bim,fam), PLINK text (sample,ped,map), or Mixblup (sample,gtp,ped,manifest).",
+                    "help_text": "Supported formats:\n- VCF: sample,file,index\n- PLINK binary: sample,bed,bim,fam\n- PLINK text: sample,ped,map\n- Mixblup: sample,gtp,ped,manifest\nSee [usage docs](https://nf-co.re/phaseimpute/usage#samplesheet-input).",
                     "fa_icon": "fas fa-file-csv"
                 },
                 "input_region": {
@@ -40,6 +39,11 @@
                 "rename_chr": {
                     "type": "boolean",
                     "description": "Should the panel VCF files be renamed to match the reference genome (e.g. 'chr1' -> '1')"
+                },
+                "chr_set": {
+                    "type": "integer",
+                    "description": "Chromosome count for non-human genomes. Required when using PLINK/Mixblup input with animal data (e.g., pigs=18, cattle=29, chickens=39).",
+                    "help_text": "This parameter is passed to plink/plink2 as --chr-set to handle non-human chromosome counts during format conversion."
                 },
                 "max_chr_names": {
                     "type": "integer",

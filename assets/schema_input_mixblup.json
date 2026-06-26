@@ -1,0 +1,47 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://raw.githubusercontent.com/nf-core/phaseimpute/master/assets/schema_input_mixblup.json",
+    "title": "nf-core/phaseimpute pipeline - params.input_mixblup schema",
+    "description": "Schema for the Mixblup input samplesheet file used by the phaseimpute pipeline",
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {
+            "sample": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]+$",
+                "errorMessage": "Sample name must only contain alphanumeric characters, underscores, and hyphens. Spaces are not allowed.",
+                "meta": ["id"]
+            },
+            "gtp": {
+                "type": "string",
+                "format": "file-path",
+                "exists": true,
+                "pattern": "^\\S+(\\.mix|\\.gtp)$",
+                "errorMessage": "Mixblup genotype file (gtp.mix) must be provided and cannot contain spaces"
+            },
+            "ped": {
+                "type": "string",
+                "format": "file-path",
+                "exists": true,
+                "pattern": "^\\S+(\\.mix|\\.ped)$",
+                "errorMessage": "Mixblup pedigree file (ped.mix) must be provided and cannot contain spaces"
+            },
+            "map": {
+                "type": "string",
+                "format": "file-path",
+                "exists": true,
+                "pattern": "^\\S+(\\.mix|\\.map)$",
+                "errorMessage": "Mixblup map file (map.mix) with SNP positions and alleles must be provided and cannot contain spaces"
+            },
+            "snp_details": {
+                "type": "string",
+                "format": "file-path",
+                "exists": true,
+                "pattern": "^\\S+\\.txt$",
+                "errorMessage": "SNP details file (.txt) with Y/N marker filter must be provided and cannot contain spaces"
+            }
+        },
+        "required": ["sample", "gtp", "ped", "map", "snp_details"]
+    }
+}

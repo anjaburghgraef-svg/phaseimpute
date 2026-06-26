@@ -1,0 +1,40 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://raw.githubusercontent.com/nf-core/phaseimpute/master/assets/schema_input_plink.json",
+    "title": "nf-core/phaseimpute pipeline - params.input_plink schema",
+    "description": "Schema for the PLINK input samplesheet file used by the phaseimpute pipeline",
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {
+            "sample": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]+$",
+                "errorMessage": "Sample name must only contain alphanumeric characters, underscores, and hyphens. Spaces are not allowed.",
+                "meta": ["id"]
+            },
+            "bed": {
+                "type": "string",
+                "format": "file-path",
+                "exists": true,
+                "pattern": "^\\S+\\.bed$",
+                "errorMessage": "PLINK binary genotype file (.bed) must be provided and cannot contain spaces"
+            },
+            "bim": {
+                "type": "string",
+                "format": "file-path",
+                "exists": true,
+                "pattern": "^\\S+\\.bim$",
+                "errorMessage": "PLINK variant information file (.bim) must be provided and cannot contain spaces"
+            },
+            "fam": {
+                "type": "string",
+                "format": "file-path",
+                "exists": true,
+                "pattern": "^\\S+\\.fam$",
+                "errorMessage": "PLINK sample information file (.fam) must be provided and cannot contain spaces"
+            }
+        },
+        "required": ["sample", "bed", "bim", "fam"]
+    }
+}

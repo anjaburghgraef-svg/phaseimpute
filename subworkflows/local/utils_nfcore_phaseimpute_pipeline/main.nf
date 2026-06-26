@@ -18,6 +18,7 @@ include { paramsSummaryMap          } from 'plugin/nf-schema'
 include { UTILS_NFCORE_PIPELINE     } from '../../nf-core/utils_nfcore_pipeline'
 include { UTILS_NEXTFLOW_PIPELINE   } from '../../nf-core/utils_nextflow_pipeline'
 include { SAMTOOLS_FAIDX            } from '../../../modules/nf-core/samtools/faidx'
+include { INPUT_CONVERT             } from '../input_convert/main'
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -131,17 +132,70 @@ workflow PIPELINE_INITIALISATION {
 
     //
     // Create channel from input file provided through params.input
+    // Supports auto-detection of format: VCF, PLINK binary, PLINK text, Mixblup
     //
     if (params.input) {
-        ch_input = Channel
-            .fromList(samplesheetToList(params.input, "${projectDir}/assets/schema_input.json"))
-            .map { samplesheet ->
-                validateInputSamplesheet(samplesheet)
+        def inputFormat = detectInputFormat(params.input)
+
+        if (inputFormat == 'vcf') {
+            // Current behavior - direct VCF input
+            ch_input = Channel
+                .fromList(samplesheetToList(params.input, "${projectDir}/assets/schema_input.json"))
+                .map { samplesheet -> validateInputSamplesheet(samplesheet) }
+                .map { meta, file, index ->
+                    [ meta + [id:meta.id.toString(), batch: 0], file, index ]
+                }
+            ch_input_plink_binary = Channel.empty()
+            ch_input_plink_text = Channel.empty()
+            ch_input_mixblup = Channel.empty()
+
+        } else if (inputFormat == 'plink_binary') {
+            // PLINK binary input - needs conversion to VCF
+            // samplesheetToList returns [meta, bed, bim, fam] tuples
+            ch_input = Channel.empty()
+            ch_input_plink_binary = Channel
+                .fromList(samplesheetToList(params.input, "${projectDir}/assets/schema_input_plink.json"))
+                .map { meta, bed, bim, fam ->
+                    [ meta + [id: meta.id.toString()], bed, bim, fam ]
+                }
+            ch_input_plink_text = Channel.empty()
+            ch_input_mixblup = Channel.empty()
+
+        } else if (inputFormat == 'plink_text') {
+            // PLINK text input - needs conversion to binary then VCF
+            // samplesheetToList returns [meta, ped, map] tuples
+            ch_input = Channel.empty()
+            ch_input_plink_binary = Channel.empty()
+            ch_input_plink_text = Channel
+                .fromList(samplesheetToList(params.input, "${projectDir}/assets/schema_input_plink_text.json"))
+                .map { meta, ped, map ->
+                    [ meta + [id: meta.id.toString()], ped, map ]
+                }
+            ch_input_mixblup = Channel.empty()
+
+        } else if (inputFormat == 'mixblup') {
+            // Mixblup input - needs conversion to PLINK then VCF
+            // samplesheetToList returns [meta, gtp, ped, map, snp_details] tuples
+            ch_input = Channel.empty()
+            ch_input_plink_binary = Channel.empty()
+            ch_input_plink_text = Channel.empty()
+            ch_input_mixblup = Channel
+                .fromList(samplesheetToList(params.input, "${projectDir}/assets/schema_input_mixblup.json"))
+                .map { meta, gtp, ped, map_mix, snp_details ->
+                    [ meta + [id: meta.id.toString()], gtp, ped, map_mix, snp_details ]
+                }
+        }
+
+        // Convert non-VCF inputs to VCF
+        INPUT_CONVERT(ch_input_plink_binary, ch_input_plink_text, ch_input_mixblup)
+
+        // Merge converted VCFs with direct VCF input
+        ch_input = ch_input.mix(
+            INPUT_CONVERT.out.vcf_tbi.map { meta, vcf, tbi ->
+                [ meta + [batch: 0], vcf, tbi ]
             }
-            .map { meta, file, index ->
-                def new_meta = meta + [id:meta.id.toString()]
-                [ new_meta + [batch: 0], file, index ]
-            } // Set batch to 0 by default
+        )
+
     } else {
         ch_input = Channel.of([[], [], []])
     }
@@ -364,6 +418,7 @@ workflow PIPELINE_INITIALISATION {
     posfile              = ch_posfile       // [ [panel, chr], vcf, index, hap, legend ]
     chunks               = ch_chunks        // [ [chr], txt ]
     chunk_model          = chunk_model
+    conformgt_jar        = ch_conformgt_jar // [ conformgt.jar ]
     versions             = ch_versions
 }
 
@@ -692,6 +747,36 @@ def validateInputSamplesheet(input) {
     // No check for the moment
 
     return [meta, bam, bai]
+}
+
+//
+// Detect input format from CSV headers
+//
+def detectInputFormat(csvPath) {
+    def headerLine = file(csvPath).readLines()[0]
+    def headers = headerLine.split(',')*.trim()*.toLowerCase()
+
+    if (headers.containsAll(['sample', 'bed', 'bim', 'fam'])) {
+        return 'plink_binary'
+    } else if (headers.containsAll(['sample', 'ped', 'map']) && !headers.contains('gtp')) {
+        return 'plink_text'
+    } else if (headers.containsAll(['sample', 'gtp', 'ped', 'map', 'snp_details'])) {
+        return 'mixblup'
+    } else if (headers.containsAll(['sample', 'file', 'index'])) {
+        return 'vcf'
+    } else {
+        error """
+        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        Unknown input format. CSV headers: ${headers.join(', ')}
+
+        Supported formats:
+          VCF:          sample,file,index
+          PLINK binary: sample,bed,bim,fam
+          PLINK text:   sample,ped,map
+          Mixblup:      sample,gtp,ped,map,snp_details
+        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        """
+    }
 }
 
 //
