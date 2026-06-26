@@ -364,7 +364,6 @@ workflow PIPELINE_INITIALISATION {
     posfile              = ch_posfile       // [ [panel, chr], vcf, index, hap, legend ]
     chunks               = ch_chunks        // [ [chr], txt ]
     chunk_model          = chunk_model
-    conformgt_jar        = ch_conformgt_jar // [ conformgt.jar ]
     versions             = ch_versions
 }
 

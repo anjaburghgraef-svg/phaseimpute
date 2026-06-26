@@ -11,6 +11,7 @@ process GENERATE_QC_METRICS {
     path target_vcfs, stageAs: "target_*.vcf.gz"
     path truth_vcfs, stageAs: "truth_*.vcf.gz"
     path panel_vcfs, stageAs: "panel_*.vcf.gz"
+    path imputed_vcfs, stageAs: "imputed_*.vcf.gz"
 
     output:
     path "summary_stats.txt", emit: summary_stats
@@ -78,6 +79,9 @@ process GENERATE_QC_METRICS {
     # Get stats for panel
     read PANEL_SAMPLES PANEL_SNPS <<< \$(get_vcf_stats "panel_*.vcf.gz")
 
+    # Get stats for imputed
+    read IMPUTED_SAMPLES IMPUTED_SNPS <<< \$(get_vcf_stats "imputed_*.vcf.gz")
+
     # Write summary stats
     cat > summary_stats.txt <<EOF
 Metric\tValue
@@ -87,6 +91,8 @@ Truth_Samples\t\${TRUTH_SAMPLES}
 Truth_SNPs\t\${TRUTH_SNPS}
 Panel_Samples\t\${PANEL_SAMPLES}
 Panel_SNPs\t\${PANEL_SNPS}
+Imputed_Samples\t\${IMPUTED_SAMPLES}
+Imputed_SNPs\t\${IMPUTED_SNPS}
 EOF
 
     # Write versions

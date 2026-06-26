@@ -807,23 +807,6 @@ server <- function(input, output, session) {
 
   # Overview value boxes
   output$overview_value_boxes <- renderUI({
-    target_text <- if (!is.null(data_store$summary_stats)) {
-      target_samples <- data_store$summary_stats$Value[data_store$summary_stats$Metric == "Target_Samples"]
-      target_snps <- data_store$summary_stats$Value[data_store$summary_stats$Metric == "Target_SNPs"]
-      if (length(target_samples) > 0 && !is.na(target_samples) && target_samples != "NA" &&
-          length(target_snps) > 0 && !is.na(target_snps) && target_snps != "NA") {
-        paste0(target_samples, " samples\n", format_k(target_snps), " SNPs")
-      } else { "N/A" }
-    } else { "N/A" }
-
-    truth_text <- if (!is.null(data_store$summary_stats)) {
-      truth_samples <- data_store$summary_stats$Value[data_store$summary_stats$Metric == "Truth_Samples"]
-      truth_snps <- data_store$summary_stats$Value[data_store$summary_stats$Metric == "Truth_SNPs"]
-      if (length(truth_samples) > 0 && !is.na(truth_samples) && truth_samples != "NA" &&
-          length(truth_snps) > 0 && !is.na(truth_snps) && truth_snps != "NA") {
-        paste0(truth_samples, " samples\n", format_k(truth_snps), " SNPs")
-      } else { "N/A" }
-    } else { "N/A" }
 
     panel_text <- if (!is.null(data_store$summary_stats)) {
       panel_samples <- data_store$summary_stats$Value[data_store$summary_stats$Metric == "Panel_Samples"]
@@ -834,12 +817,30 @@ server <- function(input, output, session) {
       } else { "N/A" }
     } else { "N/A" }
 
-    imputation_text <- if (!is.null(data_store$summary_stats)) {
+    target_text <- if (!is.null(data_store$summary_stats)) {
+      target_samples <- data_store$summary_stats$Value[data_store$summary_stats$Metric == "Target_Samples"]
       target_snps <- data_store$summary_stats$Value[data_store$summary_stats$Metric == "Target_SNPs"]
-      panel_snps <- data_store$summary_stats$Value[data_store$summary_stats$Metric == "Panel_SNPs"]
-      if (length(target_snps) > 0 && !is.na(target_snps) && target_snps != "NA" &&
-          length(panel_snps) > 0 && !is.na(panel_snps) && panel_snps != "NA") {
-        paste0(format_k(target_snps), " → ", format_k(panel_snps))
+      if (length(target_samples) > 0 && !is.na(target_samples) && target_samples != "NA" &&
+          length(target_snps) > 0 && !is.na(target_snps) && target_snps != "NA") {
+        paste0(target_samples, " samples\n", format_k(target_snps), " SNPs")
+      } else { "N/A" }
+    } else { "N/A" }
+
+    imputed_text <- if (!is.null(data_store$summary_stats)) {
+      imputed_samples <- data_store$summary_stats$Value[data_store$summary_stats$Metric == "Imputed_Samples"]
+      imputed_snps <- data_store$summary_stats$Value[data_store$summary_stats$Metric == "Imputed_SNPs"]
+      if (length(imputed_samples) > 0 && !is.na(imputed_samples) && imputed_samples != "NA" &&
+          length(imputed_snps) > 0 && !is.na(imputed_snps) && imputed_snps != "NA") {
+        paste0(imputed_samples, " samples\n", format_k(imputed_snps), " SNPs")
+      } else { "N/A" }
+    } else { "N/A" }
+
+    truth_text <- if (!is.null(data_store$summary_stats)) {
+      truth_samples <- data_store$summary_stats$Value[data_store$summary_stats$Metric == "Truth_Samples"]
+      truth_snps <- data_store$summary_stats$Value[data_store$summary_stats$Metric == "Truth_SNPs"]
+      if (length(truth_samples) > 0 && !is.na(truth_samples) && truth_samples != "NA" &&
+          length(truth_snps) > 0 && !is.na(truth_snps) && truth_snps != "NA") {
+        paste0(truth_samples, " samples\n", format_k(truth_snps), " SNPs")
       } else { "N/A" }
     } else { "N/A" }
 
@@ -854,25 +855,25 @@ server <- function(input, output, session) {
     tags$div(
       class = "value-boxes",
       tags$div(
+        class = "value-box light-blue",
+        tags$div(class = "value-box-value", panel_text),
+        tags$div(class = "value-box-subtitle", "Reference Panel")
+      ),      
+      tags$div(
         class = "value-box navy",
         tags$div(class = "value-box-value", target_text),
         tags$div(class = "value-box-subtitle", "Target Data")
       ),
       tags$div(
         class = "value-box olive",
-        tags$div(class = "value-box-value", truth_text),
-        tags$div(class = "value-box-subtitle", "Validation Data")
-      ),
-      tags$div(
-        class = "value-box light-blue",
-        tags$div(class = "value-box-value", panel_text),
-        tags$div(class = "value-box-subtitle", "Reference Panel")
+        tags$div(class = "value-box-value", imputed_text),
+        tags$div(class = "value-box-subtitle", "Imputed data")
       ),
       tags$div(
         class = "value-box navy",
-        tags$div(class = "value-box-value", imputation_text),
-        tags$div(class = "value-box-subtitle", "Imputation")
-      ),
+        tags$div(class = "value-box-value", truth_text),
+        tags$div(class = "value-box-subtitle", "Validation Data")
+      ),      
       tags$div(
         class = "value-box light-blue",
         tags$div(class = "value-box-value", tool_text),
