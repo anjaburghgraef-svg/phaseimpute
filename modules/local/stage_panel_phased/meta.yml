@@ -1,0 +1,27 @@
+name: "STAGE_PANEL_PHASED"
+description: "Stage phased panel VCF and CSI files into final panelprep output directory"
+keywords:
+  - vcf
+  - csi
+  - panel
+  - staging
+tools:
+  - cp:
+      description: "Copy phased panel files into final output directory"
+input:
+  - meta:
+      type: map
+      description: "Sample/chromosome metadata"
+  - vcf:
+      type: file
+      description: "Phased panel VCF"
+  - csi:
+      type: file
+      description: "VCF index"
+output:
+  - vcf_tbi:
+      type: tuple
+      description: "Staged phased panel VCF and CSI"
+  - versions:
+      type: file
+      description: "Module versions file"
