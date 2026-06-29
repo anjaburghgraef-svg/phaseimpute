@@ -18,6 +18,7 @@ include { paramsSummaryMap          } from 'plugin/nf-schema'
 include { UTILS_NFCORE_PIPELINE     } from '../../nf-core/utils_nfcore_pipeline'
 include { UTILS_NEXTFLOW_PIPELINE   } from '../../nf-core/utils_nextflow_pipeline'
 include { SAMTOOLS_FAIDX            } from '../../../modules/nf-core/samtools/faidx'
+include { PREPARE_GENOME            } from '../../../modules/local/prepare_genome'
 include { INPUT_CONVERT             } from '../input_convert/main'
 
 /*
@@ -108,15 +109,37 @@ workflow PIPELINE_INITIALISATION {
     genome = params.genome ? params.genome : file(params.fasta, checkIfExists:true).getBaseName()
     if (params.genome) {
         genome = params.genome
-        ch_fasta  = Channel.of([[genome:genome], getGenomeAttribute('fasta')])
-        fai       = getGenomeAttribute('fai')
-        if (fai == null) {
-            SAMTOOLS_FAIDX(ch_fasta, Channel.of([[], []]), false)
-            ch_versions = ch_versions.mix(SAMTOOLS_FAIDX.out.versions.first())
-            fai         = SAMTOOLS_FAIDX.out.fai.map{ it[1] }
+
+        // Check if this is a remote genome (has fasta_url) or local genome (has fasta path)
+        def fasta_url = getGenomeAttribute('fasta_url')
+        def fasta_path = getGenomeAttribute('fasta')
+
+        if (fasta_url) {
+            // Remote genome: download, convert gzip->uncompressed, optionally add chr prefix, and index
+            def add_chr = getGenomeAttribute('add_chr') ?: false
+            ch_genome_input = Channel.of([genome, fasta_url, add_chr])
+
+            PREPARE_GENOME(ch_genome_input)
+            ch_versions = ch_versions.mix(PREPARE_GENOME.out.versions.first())
+
+            ch_fasta = PREPARE_GENOME.out.genome.map { name, fasta, fai -> [[genome: name], fasta] }
+            fai = PREPARE_GENOME.out.genome.map { name, fasta, fai -> fai }
+
+        } else if (fasta_path) {
+            // Local genome: use existing fasta file
+            ch_fasta = Channel.of([[genome:genome], file(fasta_path, checkIfExists:true)])
+            def fai_path = getGenomeAttribute('fasta_fai')
+            if (fai_path) {
+                fai = Channel.of(file(fai_path, checkIfExists:true))
+            } else {
+                SAMTOOLS_FAIDX(ch_fasta, Channel.of([[], []]), false)
+                ch_versions = ch_versions.mix(SAMTOOLS_FAIDX.out.versions.first())
+                fai = SAMTOOLS_FAIDX.out.fai.map{ it[1] }
+            }
         } else {
-            fai = Channel.of(file(fai, checkIfExists:true))
+            error "Genome '${genome}' has neither 'fasta_url' nor 'fasta' defined in config"
         }
+
     } else if (params.fasta) {
         genome = file(params.fasta, checkIfExists:true).getBaseName()
         ch_fasta  = Channel.of([[genome:genome], file(params.fasta, checkIfExists:true)])

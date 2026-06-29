@@ -257,13 +257,13 @@
                     "fa_icon": "fas fa-book",
                     "help_text": "Use this parameter to select a pre-configured reference genome.\n\n**Hendrix Genetics species** (two variants for chromosome naming where applicable):\n- `GRCg7b` / `GRCg7b_chr` - Chicken (Gallus gallus)\n- `Turkey_5.1` / `Turkey_5.1_chr` - Turkey (Meleagris gallopavo)\n- `Sscrofa11.1` / `Sscrofa11.1_chr` - Pig (Sus scrofa)\n- `Ssal_v3.1` / `Ssal_v3.1_chr` - Atlantic Salmon (Salmo salar)\n- `USDA_OmykA_1.1` / `USDA_OmykA_1.1_chr` - Rainbow Trout (Oncorhynchus mykiss)\n- `ASM378908v1` - Pacific White Shrimp (scaffold-level only, no chr variant)\n\nUse the `_chr` suffix variant if your reference panel uses chr-prefixed chromosome names (chr1, chr2...). Use the base name if your panel uses plain numbers (1, 2...).\n\n**Standard iGenomes:** GRCh38, GRCh37, GRCm38, etc."
                 },
-                "genomes_base": {
+                "genomes_cache": {
                     "type": "string",
                     "format": "directory-path",
-                    "description": "Base path for Hendrix Genetics species reference genomes.",
+                    "description": "Cache directory for auto-downloaded reference genomes.",
                     "fa_icon": "fas fa-folder-open",
-                    "help_text": "Directory containing prepared reference genomes for Hendrix species. Run `bin/prepare_reference_genomes.sh` to download and prepare all species genomes. Structure: `<genomes_base>/<species>/<genome>.fa.bgz`",
-                    "default": "/lustre/backup/HG/reference_genomes"
+                    "help_text": "Reference genomes are automatically downloaded from Ensembl/NCBI on first use, converted to the correct format, indexed, and cached in this directory. Subsequent runs will reuse the cached genomes. Default is 'genomes_cache' in your launch directory.",
+                    "default": "${launchDir}/genomes_cache"
                 },
                 "fasta": {
                     "type": "string",
