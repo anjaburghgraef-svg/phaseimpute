@@ -12,6 +12,13 @@
             "description": "Define where the pipeline should find input data and save output data.",
             "required": ["outdir"],
             "properties": {
+                "species": {
+                    "type": "string",
+                    "description": "Species to configure the pipeline for. Automatically sets chromosome count and optimized imputation parameters.",
+                    "help_text": "Supported species: layer (layer chicken), broiler (broiler chicken), turkey, pig, salmon (Atlantic salmon), trout (rainbow trout), shrimp (Pacific white shrimp). Each species has optimized settings for chunk sizes, window sizes, and chromosome counts based on their genome characteristics.",
+                    "fa_icon": "fas fa-paw",
+                    "enum": ["layer", "broiler", "turkey", "pig", "salmon", "trout", "shrimp"]
+                },
                 "input": {
                     "type": "string",
                     "format": "file-path",
@@ -246,9 +253,17 @@
             "properties": {
                 "genome": {
                     "type": "string",
-                    "description": "Name of iGenomes reference.",
+                    "description": "Name of reference genome.",
                     "fa_icon": "fas fa-book",
-                    "help_text": "If using a reference genome configured in the pipeline using iGenomes, use this parameter to give the ID for the reference. This is then used to build the full paths for all required reference genome files e.g. `--genome GRCh38`. \n\nSee the [nf-core website docs](https://nf-co.re/usage/reference_genomes) for more details."
+                    "help_text": "Use this parameter to select a pre-configured reference genome.\n\n**Hendrix Genetics species** (two variants for chromosome naming where applicable):\n- `GRCg7b` / `GRCg7b_chr` - Chicken (Gallus gallus)\n- `Turkey_5.1` / `Turkey_5.1_chr` - Turkey (Meleagris gallopavo)\n- `Sscrofa11.1` / `Sscrofa11.1_chr` - Pig (Sus scrofa)\n- `Ssal_v3.1` / `Ssal_v3.1_chr` - Atlantic Salmon (Salmo salar)\n- `USDA_OmykA_1.1` / `USDA_OmykA_1.1_chr` - Rainbow Trout (Oncorhynchus mykiss)\n- `ASM378908v1` - Pacific White Shrimp (scaffold-level only, no chr variant)\n\nUse the `_chr` suffix variant if your reference panel uses chr-prefixed chromosome names (chr1, chr2...). Use the base name if your panel uses plain numbers (1, 2...).\n\n**Standard iGenomes:** GRCh38, GRCh37, GRCm38, etc."
+                },
+                "genomes_base": {
+                    "type": "string",
+                    "format": "directory-path",
+                    "description": "Base path for Hendrix Genetics species reference genomes.",
+                    "fa_icon": "fas fa-folder-open",
+                    "help_text": "Directory containing prepared reference genomes for Hendrix species. Run `bin/prepare_reference_genomes.sh` to download and prepare all species genomes. Structure: `<genomes_base>/<species>/<genome>.fa.bgz`",
+                    "default": "/lustre/backup/HG/reference_genomes"
                 },
                 "fasta": {
                     "type": "string",
