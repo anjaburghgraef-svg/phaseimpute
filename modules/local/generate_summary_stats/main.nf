@@ -25,6 +25,7 @@ process GENERATE_QC_METRICS {
     #!/usr/bin/env bash
 
     # Function to get sample count and SNP count from multiple VCF files
+    # Optimized: only queries first VCF for SNPs, samples counted efficiently
     get_vcf_stats() {
         local pattern=\$1
         local vcf_files=(\$(ls \${pattern} 2>/dev/null | grep -v "NO_FILE"))
@@ -34,38 +35,35 @@ process GENERATE_QC_METRICS {
             return
         fi
 
-        # Get unique sample names across all VCFs
-        local sample_file="samples_\${RANDOM}.txt"
-        for vcf in "\${vcf_files[@]}"; do
-            bcftools query -l "\$vcf" 2>/dev/null >> "\$sample_file"
-        done
+        local first_vcf="\${vcf_files[0]}"
+        local num_files=\${#vcf_files[@]}
 
-        local samples=\$(sort -u "\$sample_file" 2>/dev/null | wc -l)
-        samples=\${samples:-0}
-        rm -f "\$sample_file"
+        # Get samples from first VCF
+        local samples_in_first=\$(bcftools query -l "\$first_vcf" 2>/dev/null | wc -l)
+        samples_in_first=\${samples_in_first:-0}
 
-        # Deduplicate VCF files by resolving symlinks to real paths
-        declare -A seen_paths
-        local unique_vcfs=()
+        # If first VCF has 1 sample and we have multiple files, assume per-sample VCFs
+        # Sample count = number of files (much faster than querying each file)
+        local samples
+        if [ "\$samples_in_first" -eq 1 ] && [ "\$num_files" -gt 1 ]; then
+            samples=\$num_files
+        else
+            # Multi-sample VCF(s) - need to count unique samples across all
+            local sample_file="samples_\${RANDOM}.txt"
+            for vcf in "\${vcf_files[@]}"; do
+                bcftools query -l "\$vcf" 2>/dev/null >> "\$sample_file"
+            done
+            samples=\$(sort -u "\$sample_file" 2>/dev/null | wc -l)
+            samples=\${samples:-0}
+            rm -f "\$sample_file"
+        fi
 
-        for vcf in "\${vcf_files[@]}"; do
-            local real_path=\$(readlink -f "\$vcf" 2>/dev/null || realpath "\$vcf" 2>/dev/null || echo "\$vcf")
-            if [ -z "\${seen_paths[\$real_path]}" ]; then
-                seen_paths[\$real_path]=1
-                unique_vcfs+=("\$real_path")
-            fi
-        done
-
-        # Sum SNPs across unique VCFs only
-        local total_snps=0
-        for vcf in "\${unique_vcfs[@]}"; do
-            local snps=\$(bcftools index --nrecords "\$vcf" 2>/dev/null)
-            if [ -z "\$snps" ] || [ "\$snps" = "0" ]; then
-                snps=\$(bcftools view -H "\$vcf" 2>/dev/null | wc -l)
-            fi
-            snps=\${snps:-0}
-            total_snps=\$((total_snps + snps))
-        done
+        # Get SNP count from first VCF only
+        local total_snps=\$(bcftools index --nrecords "\$first_vcf" 2>/dev/null)
+        if [ -z "\$total_snps" ] || [ "\$total_snps" = "0" ]; then
+            total_snps=\$(bcftools view -H "\$first_vcf" 2>/dev/null | wc -l)
+        fi
+        total_snps=\${total_snps:-0}
 
         echo "\${samples}\t\${total_snps}"
     }
