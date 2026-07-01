@@ -1,4 +1,5 @@
 .nextflow*
+genomes_cache/
 work/
 data/
 results/

@@ -125,6 +125,109 @@ or you can specify a custom genome using:
 --fasta Homo_sapiens.GRCh38.dna_sm.primary_assembly.fa.gz
 ```
 
+## Hendrix Genetics Species Support
+
+This fork includes pre-configured support for Hendrix livestock species. Use the `--species` parameter to automatically set optimized imputation parameters for your species.
+
+### Supported species
+
+| Species | `--species` | `--genome` | With chr prefix |
+|---------|-------------|------------|-----------------|
+| Layer chicken | `layer` | `GRCg7b` | `GRCg7b_chr` |
+| Broiler chicken | `broiler` | `GRCg7b` | `GRCg7b_chr` |
+| Turkey | `turkey` | `Turkey_5.1` | `Turkey_5.1_chr` |
+| Pig | `pig` | `Sscrofa11.1` | `Sscrofa11.1_chr` |
+| Atlantic salmon | `salmon` | `Ssal_v3.1` | `Ssal_v3.1_chr` |
+| Rainbow trout | `trout` | `USDA_OmykA_1.1` | `USDA_OmykA_1.1_chr` |
+| Pacific white shrimp | `shrimp` | `ASM378908v1` | *(scaffold-level only)* |
+
+Use the `_chr` variant if your VCF files use `chr1, chr2...` chromosome naming. Use the base version if they use `1, 2...` naming.
+
+### Automatic genome download
+
+Reference genomes are **automatically downloaded and cached** on first use. The pipeline will:
+
+1. Download the genome from Ensembl/NCBI
+2. Convert from gzip to uncompressed format
+3. Add `chr` prefix if using a `_chr` genome variant
+4. Create FAI index
+5. Cache in `genomes_cache/` directory for future runs
+
+You can specify a custom cache location:
+
+```bash
+--genomes_cache /path/to/shared/cache
+```
+
+For shared HPC environments, point this to a shared directory so all users benefit from cached genomes.
+
+### Species-specific parameters
+
+The `--species` parameter automatically configures:
+
+- `chr_set`: Chromosome count for PLINK compatibility
+- MINIMAC4 chunk and overlap sizes (scaled to chromosome size)
+- GLIMPSE/GLIMPSE2 window sizes
+- Beagle effective population size (ne)
+
+For detailed species parameter information, see [conf/species/species_config_summary.md](../conf/species/species_config_summary.md).
+
+### Example with species
+
+```bash
+nextflow run /path/to/phaseimpute \
+    --species pig \
+    --genome Sscrofa11.1 \
+    --input samplesheet.csv \
+    --panel panel.csv \
+    --steps panelprep,impute \
+    --tools beagle5 \
+    --outdir results \
+    -profile singularity
+```
+
+## Genotype harmonization (ConformGT)
+
+This fork includes an optional genotype harmonization step using [conform-gt](https://faculty.washington.edu/browning/conform-gt.html). This step aligns target alleles to the reference panel before imputation, handling strand mismatches and allele flips.
+
+```bash
+--conformgt true   # Enable (default)
+--conformgt false  # Disable
+```
+
+ConformGT runs automatically between panel preparation and imputation when enabled.
+
+## Alternative input formats
+
+In addition to BAM/CRAM and VCF files, this fork supports conversion from other formats:
+
+### PLINK binary format
+
+If your data is in PLINK binary format (`.bed`, `.bim`, `.fam`), create a samplesheet:
+
+```csv
+sample,bed,bim,fam
+DATASET1,/path/to/data.bed,/path/to/data.bim,/path/to/data.fam
+```
+
+### PLINK text format
+
+For PLINK text format (`.ped`, `.map`):
+
+```csv
+sample,ped,map
+DATASET1,/path/to/data.ped,/path/to/data.map
+```
+
+### MiXBLUP format
+
+For MiXBLUP output files, convert via PLINK to VCF:
+
+```csv
+sample,gtp,ped,manifest
+DATASET1,/path/to/data.gtp,/path/to/data.ped,/path/to/manifest.txt
+```
+
 ## Running the pipeline: quick example
 
 A quick running example only with the imputation step can be performed as follows:

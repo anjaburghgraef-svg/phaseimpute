@@ -131,16 +131,21 @@
                 "phase": {
                     "description": "Should the reference panel be phased",
                     "type": "boolean",
-                    "pattern": "true|false"
+                    "pattern": "true|false",
+                    "default": true
+
                 },
                 "normalize": {
                     "description": "Should the reference panel be normalized",
                     "type": "boolean",
-                    "pattern": "true|false"
+                    "pattern": "true|false",
+                    "default": true
+
                 },
                 "compute_freq": {
                     "description": "Should the allele frequency for each variant (AC/AN fields necessary for Glimpse1 and the validation step) be computed using VCFFIXUP tool. This can be necessary if the fields are absent from the panel or if samples have been removed.",
-                    "type": "boolean"
+                    "type": "boolean",
+                    "default": true
                 },
                 "chunk_model": {
                     "type": "string",
@@ -148,21 +153,8 @@
                     "enum": ["recursive", "sequential"],
                     "default": "sequential",
                     "hidden": true
-                },
-                "conformgt": {
-                    "type": "boolean",
-                    "description": "Enable genotype harmonization using conform-gt to align target alleles to reference panel",
-                    "default": false,
-                    "fa_icon": "fas fa-align-center"
-                },
-                "conformgt_jar": {
-                    "type": "string",
-                    "description": "Path to conform-gt JAR file (defaults to bundled version)",
-                    "default": "${projectDir}/assets/conform-gt.r1174.jar",
-                    "format": "file-path",
-                    "fa_icon": "fas fa-file-code",
-                    "hidden": true
                 }
+
             }
         },
         "imputation_options": {
@@ -199,6 +191,20 @@
                     "description": "Seed for random number generation in Stitch and Quilt software",
                     "hidden": true,
                     "default": 1
+                },                
+                "conformgt": {
+                    "type": "boolean",
+                    "description": "Enable genotype harmonization using conform-gt to align target alleles to reference panel",
+                    "default": true,
+                    "fa_icon": "fas fa-align-center"
+                },
+                "conformgt_jar": {
+                    "type": "string",
+                    "description": "Path to conform-gt JAR file (defaults to bundled version)",
+                    "default": "${projectDir}/assets/conform-gt.r1174.jar",
+                    "format": "file-path",
+                    "fa_icon": "fas fa-file-code",
+                    "hidden": true
                 }
             }
         },
@@ -222,7 +228,7 @@
                 "bins": {
                     "type": "string",
                     "description": "User-defined allele count bins used for rsquared computations.",
-                    "default": "0 0.01 0.05 0.1 0.2 0.5",
+                    "default": "0 0.01 0.02 0.05 0.1 0.2 0.3 0.4 0.5",
                     "pattern": "^(\\d+(\\.\\d+)? )+(\\d+(\\.\\d+)?)$"
                 },
                 "min_val_gl": {

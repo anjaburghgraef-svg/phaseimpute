@@ -123,14 +123,21 @@ The results from `--steps impute` will have the following directory structure:
 - `imputation/batch/all.batchi.id.txt`: List of samples names processed in the i^th^ batch.
 - `imputation/csv/`
   - `impute.csv`: A single CSV file containing the path to a VCF file and its index, of each imputed sample with their corresponding tool.
-- `imputation/[glimpse1,glimpse2,quilt,stitch]/`
+- `imputation/[glimpse1,glimpse2,quilt,stitch,beagle5,minimac4]/`
   - `concat/all.batch*.vcf.gz`: The concatenated VCF files of all imputed samples by batches.
   - `concat/all.batch*.vcf.gz.tbi`: The index file for the concatenated imputed VCF files of the samples.
+  - `concat/*.bed`: PLINK binary genotype file (Hendrix fork).
+  - `concat/*.bim`: PLINK variant information file (Hendrix fork).
+  - `concat/*.fam`: PLINK sample information file (Hendrix fork).
   - `samples/*.vcf.gz`: A VCF file of each imputed sample.
   - `samples/*.vcf.gz.tbi`: The index file of the imputed VCF files.
 - `imputation/*.<tool>.bcftools_stats.txt`: The statistics of the imputed VCF target file produced by [`BCFTOOLS_STATS`](https://samtools.github.io/bcftools/bcftools.html#stats.)
 
 </details>
+
+### PLINK output (Hendrix Fork)
+
+This fork automatically converts imputed VCF files to PLINK binary format (`.bed`, `.bim`, `.fam`) for downstream analysis in tools like MiXBLUP or other breeding software. The PLINK files are output alongside the concatenated VCF in the `concat/` directory for each imputation tool.
 
 [`bcftools concat`](https://samtools.github.io/bcftools/bcftools.html#concat) will produce a single VCF file from a list of imputed VCF files in chunks.
 
@@ -178,6 +185,67 @@ The results from `--steps validate` will have the following directory structure:
     - `AllSamples.txt`: Aggregation of the above `GLIMPSE_CONCORDANCE` output across samples and tools.
 
 </details>
+
+## QC Statistics (Hendrix Fork)
+
+This fork generates additional QC statistics for integration with the Shiny QC dashboard.
+
+<details markdown="1">
+<summary>Output files</summary>
+
+- `qc_stats/`
+  - `summary_stats.txt`: Summary statistics including sample counts and SNP counts for target, truth, panel, and imputed datasets.
+
+</details>
+
+The summary statistics file contains metrics in tab-separated format:
+
+```
+Metric          Value
+Target_Samples  100
+Target_SNPs     50000
+Truth_Samples   100
+Truth_SNPs      50000
+Panel_Samples   2504
+Panel_SNPs      500000
+Imputed_Samples 100
+Imputed_SNPs    500000
+```
+
+## Shiny QC Dashboard (Hendrix Fork)
+
+An interactive Shiny application is included for exploring imputation quality metrics.
+
+<details markdown="1">
+<summary>Output files</summary>
+
+- `shiny_qc_app/`
+  - `app.R`: Main Shiny application
+  - `launch_app.sh`: Launch script for HPC environments
+  - `www/custom.css`: Hendrix Genetics branded styling
+
+</details>
+
+### Launching the QC Dashboard
+
+After the pipeline completes, launch the dashboard:
+
+```bash
+cd /path/to/results
+/path/to/phaseimpute/shiny_qc_app/launch_app.sh
+```
+
+The app will start on port 3838. Access via browser at: `http://<hostname>:3838`
+
+### Dashboard features
+
+- **Overview Tab**: Pipeline metrics, parameters, and sample statistics
+- **Quality & Accuracy Tab**:
+  - MAF-stratified imputation quality
+  - Overall accuracy metrics (Dosage r², Best GT r², General Concordance, Non-Ref Concordance)
+  - Per-sample accuracy breakdown
+
+For more information, see `shiny_qc_app/README.md`.
 
 ## Reports
 

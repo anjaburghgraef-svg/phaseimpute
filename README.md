@@ -5,121 +5,208 @@
   </picture>
 </h1>
 
-[![Open in GitHub Codespaces](https://img.shields.io/badge/Open_In_GitHub_Codespaces-black?labelColor=grey&logo=github)](https://github.com/codespaces/new/nf-core/phaseimpute)
-[![GitHub Actions CI Status](https://github.com/nf-core/phaseimpute/actions/workflows/nf-test.yml/badge.svg)](https://github.com/nf-core/phaseimpute/actions/workflows/nf-test.yml)
-[![GitHub Actions Linting Status](https://github.com/nf-core/phaseimpute/actions/workflows/linting.yml/badge.svg)](https://github.com/nf-core/phaseimpute/actions/workflows/linting.yml)[![AWS CI](https://img.shields.io/badge/CI%20tests-full%20size-FF9900?labelColor=000000&logo=Amazon%20AWS)](https://nf-co.re/phaseimpute/results)[![Cite with Zenodo](http://img.shields.io/badge/DOI-10.5281/zenodo.14329225-1073c8?labelColor=000000)](https://doi.org/10.5281/zenodo.14329225)
-[![nf-test](https://img.shields.io/badge/unit_tests-nf--test-337ab7.svg)](https://www.nf-test.com)
+**Hendrix Genetics Fork - Livestock Imputation Pipeline**
 
-[![Nextflow](https://img.shields.io/badge/version-%E2%89%A525.04.0-green?style=flat&logo=nextflow&logoColor=white&color=%230DC09D&link=https%3A%2F%2Fnextflow.io)](https://www.nextflow.io/)
-[![nf-core template version](https://img.shields.io/badge/nf--core_template-3.5.1-green?style=flat&logo=nfcore&logoColor=white&color=%2324B064&link=https%3A%2F%2Fnf-co.re)](https://github.com/nf-core/tools/releases/tag/3.5.1)
-[![run with conda](http://img.shields.io/badge/run%20with-conda-3EB049?labelColor=000000&logo=anaconda)](https://docs.conda.io/en/latest/)
+
+[![Cite with Zenodo](http://img.shields.io/badge/DOI-10.5281/zenodo.14329225-1073c8?labelColor=000000)](https://doi.org/10.5281/zenodo.14329225)
+[![nf-test](https://img.shields.io/badge/unit_tests-nf--test-337ab7.svg)](https://www.nf-test.com)[![Nextflow](https://img.shields.io/badge/version-%E2%89%A525.04.0-green?style=flat&logo=nextflow&logoColor=white&color=%230DC09D&link=https%3A%2F%2Fnextflow.io)](https://www.nextflow.io/)
+[![nf-core template version](https://img.shields.io/badge/nf--core_template-3.5.1-green?style=flat&logo=nfcore&logoColor=white&color=%2324B064&link=https%3A%2F%2Fnf-co.re)](https://github.com/nf-core/tools/releases/tag/3.5.1) 
 [![run with docker](https://img.shields.io/badge/run%20with-docker-0db7ed?labelColor=000000&logo=docker)](https://www.docker.com/)
 [![run with singularity](https://img.shields.io/badge/run%20with-singularity-1d355c.svg?labelColor=000000)](https://sylabs.io/docs/)
 [![Launch on Seqera Platform](https://img.shields.io/badge/Launch%20%F0%9F%9A%80-Seqera%20Platform-%234256e7)](https://cloud.seqera.io/launch?pipeline=https://github.com/nf-core/phaseimpute)
+[![Get help on Slack](http://img.shields.io/badge/slack-nf--core%20%23phaseimpute-4A154B?labelColor=000000&logo=slack)](https://nfcore.slack.com/channels/phaseimpute)
+[![Follow on Bluesky](https://img.shields.io/badge/bluesky-%40nf__core-1185fe?labelColor=000000&logo=bluesky)](https://bsky.app/profile/nf-co.re)
+[![Follow on Mastodon](https://img.shields.io/badge/mastodon-nf__core-6364ff?labelColor=FFFFFF&logo=mastodon)](https://mstdn.science/@nf_core)
 
-[![Get help on Slack](http://img.shields.io/badge/slack-nf--core%20%23phaseimpute-4A154B?labelColor=000000&logo=slack)](https://nfcore.slack.com/channels/phaseimpute)[![Follow on Bluesky](https://img.shields.io/badge/bluesky-%40nf__core-1185fe?labelColor=000000&logo=bluesky)](https://bsky.app/profile/nf-co.re)[![Follow on Mastodon](https://img.shields.io/badge/mastodon-nf__core-6364ff?labelColor=FFFFFF&logo=mastodon)](https://mstdn.science/@nf_core)[![Watch on YouTube](http://img.shields.io/badge/youtube-nf--core-FF0000?labelColor=000000&logo=youtube)](https://www.youtube.com/c/nf-core)
+## What This Pipeline Does
 
-## Introduction
+This pipeline **imputes missing genotypes** in your target samples using a reference panel. It is optimized for Hendrix livestock species with pre-tuned parameters for each. Reference genomes are automatically downloaded and cached on first use.
 
-**nf-core/phaseimpute** is a bioinformatics pipeline to phase and impute genetic data.
+**For more detailed usage explanations, please visit [nf-co.re/phaseimpute](https://nf-co.re/phaseimpute/).**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/metro/MetroMap_animated_dark.svg">
-  <img src="docs/images/metro/MetroMap_animated.svg" alt="metromap"/>
+  <img src="docs/images/metro/phaseimpute_adaptation.png" alt="metromap"/>
 </picture>
 
-The whole pipeline consists of five main steps, each of which can be run separately and independently. Users are not required to run all steps sequentially and can select specific steps based on their needs:
 
-1. **QC: Chromosome Name Check**: Ensures compatibility by validating that all expected contigs are present in the variant and alignment files.
+## Supported Species
 
-2. **Simulation (`--simulate`)**: Generates artificial datasets by downsampling high-density data to simulate low-pass genetic information. This enables the comparison of imputation results against a high-quality dataset (truth set). Simulations may include:
-   - **Low-pass data generation** by downsampling BAM or CRAM files with [`samtools view -s`](https://www.htslib.org/doc/samtools-view.html) at different depths.
+| Species | `--species` | `--genome` | With chr prefix |
+|---------|-------------|------------|-----------------|
+| Layer chicken | `layer` | `GRCg7b` | `GRCg7b_chr` |
+| Broiler chicken | `broiler` | `GRCg7b` | `GRCg7b_chr` |
+| Turkey | `turkey` | `Turkey_5.1` | `Turkey_5.1_chr` |
+| Pig | `pig` | `Sscrofa11.1` | `Sscrofa11.1_chr` |
+| Atlantic salmon | `salmon` | `Ssal_v3.1` | `Ssal_v3.1_chr` |
+| Rainbow trout | `trout` | `USDA_OmykA_1.1` | `USDA_OmykA_1.1_chr` |
+| Pacific white shrimp | `shrimp` | `ASM378908v1` | *(scaffold-level only)* |
 
-3. **Panel Preparation (`--panelprep`)**: Prepares the reference panel through phasing, quality control, variant filtering, and annotation. Key processes include:
+For other species a separate `fasta` needs to be downloaded, or check if it is available in `conf/igenomes.config`.
+
+> **Note:** Use the `_chr` variant if your VCF files use `chr1, chr2...` chromosome naming. Use the base version if they use `1, 2...` naming.
+
+## Input Formats
+
+The pipeline accepts several input formats:
+
+| Format | Use case | CSV input columns |
+|--------|----------|----------|
+| **BAM/CRAM** | Aligned sequencing reads (most common for low-pass data) | sample,file,index |
+| **VCF** | Pre-called genotypes from arrays or sequencing | sample,file,index |
+| **PLINK → VCF** | Convert PLINK binary files to VCF using included tools | sample,bed,bim,fam / sample,ped,map |
+| **MiXBLUP → PLINK → VCF** | Convert MiXBLUP output via PLINK to VCF | sample,gtp,ped,manifest |
+
+## Quick Start
+
+### Step 1: Prepare your input samplesheet
+
+Create `target.csv` with your target samples (to be imputed) in any of the above mentioned formats:
+
+```csv
+sample,file,index
+ANIMAL_1,/path/to/sample.vcf.gz,/path/to/sample.vcf.gz.csi
+ANIMAL_2,/path/to/sample2.vcf.gz,/path/to/sample2.vcf.gz.csi
+...
+```
+
+If you have one file with all samples, that is also possible, just put them on one line:
+
+```csv
+sample,file,index
+ALL_SAMPLES,/path/to/sample.vcf.gz,/path/to/sample.vcf.gz.csi
+```
+
+### Step 2: Prepare your panel samplesheet
+
+Create `panel.csv` with your reference panel (one row per chromosome):
+
+(If all chromosomes are in one file, just put that same file on every line)
+
+```csv
+panel,chr,vcf,index
+MyPanel,chr1,/path/to/panel_chr1.vcf.gz,/path/to/panel_chr1.vcf.gz.csi
+MyPanel,chr2,/path/to/panel_chr2.vcf.gz,/path/to/panel_chr2.vcf.gz.csi
+```
+### Optional: Prepare your truth samplesheet (Validation step)
+
+Create `truth.csv` with your truth dataset (for validation), same format as target.csv.
+
+```csv
+sample,file,index
+TRUTH,/path/to/truth.vcf.gz,/path/to/truth.vcf.gz.csi
+```
+
+### Step 3: Run the pipeline
+
+```bash
+nextflow run /path/to/phaseimpute \
+  --species pig \
+  --genome Sscrofa11.1 \
+  --input target.csv \
+  --panel panel.csv \
+  --steps panelprep,impute \
+  --tools beagle5 \
+  --outdir pig_impute/output \
+  -profile slurm
+```
+
+add `-resume` after debugging, cached processes will be reused.
+
+## Key Parameters
+
+### Required
+
+| Parameter | Description |
+|-----------|-------------|
+| `--species` | Hendrix species name - sets optimized imputation parameters |
+| `--genome` | Reference genome assembly - auto-downloads if not cached |
+| `--input` | Path to samplesheet with target samples to impute |
+| `--panel` | Path to samplesheet with reference panel VCFs |
+| `--outdir` | Directory where results will be saved |
+| `-profile` | Profile to be used. For HPC use: slurm. For Azure use: azure. |
+
+
+### Pipeline Steps
+
+| Parameter | Description |
+|-----------|-------------|
+| `--steps panelprep` | Prepare and phase the reference panel (run once per panel) |
+| `--steps impute` | Impute genotypes in your target samples |
+| `--steps validate` | Compare imputed vs truth data for accuracy metrics |
+| `--steps panelprep,impute,validate` | Run multiple steps in one command |
+
+### --steps panelprep
+
+**Panel Preparation**: Prepares the reference panel through phasing, quality control, variant filtering, and annotation. Key processes include:
    - **Normalization** of the reference panel to retain essential variants.
    - **Phasing** of haplotypes in the reference panel using [Shapeit5](https://odelaneau.github.io/shapeit5/).
    - **Chunking** of the reference panel into specific regions across chromosomes.
    - **Position Extraction** for targeted imputation sites.
 
-4. **Imputation (`--impute`)**: This is the primary step, where genotypes in the target dataset are imputed using the prepared reference panel. The main steps are:
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--phase` | `true` | Should the reference panel be phased  |
+| `--normalize` | `true` | Should the reference panel be normalized |
+| `--compute_freq` | `true` | Should the allele frequency for each variant (AC/AN fields necessary for the validation step) be computed |
+
+### --steps impute
+
+**Imputation (`--impute`)**: This is the primary step, where genotypes in the target dataset are imputed using the prepared reference panel. The main steps are:
    - **Imputation** of the target dataset using tools like [Glimpse1](https://odelaneau.github.io/GLIMPSE/glimpse1/index.html), [Glimpse2](https://odelaneau.github.io/GLIMPSE/), [Stitch](https://github.com/rwdavies/stitch), [Quilt](https://github.com/rwdavies/QUILT), [Beagle5](https://faculty.washington.edu/browning/beagle/beagle.html) or [Minimac4](https://github.com/statgen/Minimac4).
    - **Ligation** of imputed chunks to produce a final VCF file per sample, with all chromosomes unified.
 
-5. **Validation (`--validate`)**: Assesses imputation accuracy by comparing the imputed dataset to a truth dataset. This step leverages the [Glimpse2](https://odelaneau.github.io/GLIMPSE/) concordance process to summarize differences between two VCF files.
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--batch_size` | `100` | Maximal number of individuals per batch for imputation  |
+| `--chunks` |  | Path to comma or tab-separated file, yaml or json file containing genomic chunks to be used for imputation. Is also created by panelprep step and automatically used if necessary |
+| `--posfile` |  | Path to comma or tab-separated file, yaml or json file containing reference panel information converted files for imputation. Is also created by panelprep step and automatically used if necessary |
+| `--conformgt` | `true` | Enable genotype harmonization using conform-gt to align target alleles to reference panel  |
 
-For more detailed instructions, please refer to the [usage documentation](https://nf-co.re/phaseimpute/usage).
 
-## Usage
+### Imputation Tools
 
-> [!NOTE]
-> If you are new to Nextflow and nf-core, please refer to [this page](https://nf-co.re/docs/usage/installation) on how to set-up Nextflow. Make sure to [test your setup](https://nf-co.re/docs/usage/introduction#how-to-run-a-pipeline) with `-profile test` before running the workflow on actual data.
+| Parameter | Description |
+|-----------|-------------|
+| `--tools beagle5` | Beagle 5.2 - Best choice for livestock |
+| `--tools glimpse2` | Fast and accurate for most use cases |
+| `--tools glimpse1` | Original GLIMPSE algorithm |
+| `--tools minimac4` | Minimac4 - widely used in human genetics |
+| `--tools stitch` | For low-coverage data without a reference panel |
+| `--tools quilt` | Similar to STITCH, uses haplotype reference |
 
-The primary function of this pipeline is to impute a target dataset based on a phased panel. Begin by preparing a samplesheet with your input data, formatted as follows:
+### --steps validate
 
-```csv title="samplesheet.csv"
-sample,file,index
-SAMPLE_1X,/path/to/.<bam/cram>,/path/to/.<bai,crai>
-```
+**Validation (`--validate`)**: Assesses imputation accuracy by comparing the imputed dataset to a truth dataset. This step leverages the [Glimpse2](https://odelaneau.github.io/GLIMPSE/) concordance process to summarize differences between two VCF files.
 
-Each row represents either a bam or a cram file along with its corresponding index file. Ensure that all input files have consistent file extensions.
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--input_truth` |  | Path to comma or tab-separated file, yaml or json file containing samples truth files informations. See specifications above  |
+| `--bins` | `0 0.01 0.02 0.05 0.1 0.2 0.3 0.4 0.5` | User-defined allele count bins used for rsquared computations |
+| `--min_val_gl` | `0.9` | Minimum genotype likelihood probability P(G|R) in validation data. Set to zero to have no filter, if using gt-validation |
+| `--min_val_dp` | `5` | Minimum coverage in validation data. If FORMAT/DP is missing and -min_val_dp > 0, the program exits with an error. Set to zero to have no filter of if using –gt-validation  |
+| `--gt_val` | `false` | Use genotype-based validation instead of genotype likelihoods. Required for compatibility with FreeBayes-style GL fields.  |
 
-For certain tools and steps within the pipeline, you will also need to provide a samplesheet for the reference panel. Here's an example of what a final samplesheet for a reference panel might look like, covering three chromosomes:
 
-```csv title="panel.csv"
-panel,chr,vcf,index
-Phase3,1,ALL.chr1.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz,ALL.chr1.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz.csi
-Phase3,2,ALL.chr2.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz,ALL.chr2.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz.csi
-Phase3,3,ALL.chr3.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz,ALL.chr3.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz.csi
-```
+## Outputs
 
-## Running the pipeline
+| Output | Location | Contains |
+|--------|----------|----------|
+| Imputed data | `outdir/imputation/<tool>/vcf/` | Concatenated plink/vcf and per sample vcf. |
+| MultiQC report | `outdir/multiqc/multiqc_report.html` | General accuracy metrics |
+| Pipeline info | `outdir/pipeline_info/` | CPU/Mem usage per process (trace), co2 footprint, execution metrics. |
 
-Run one of the steps of the pipeline (imputation with glimpse1) using the following command and test profile:
+**QC Dashboard**: Launch the interactive Shiny app with `shiny_qc_app/launch_app.sh` to explore imputation quality metrics. For more info read `shiny_qc_app/README.md`.
 
-```bash
-nextflow run nf-core/phaseimpute \
-   -profile test, <docker/singularity/.../institute> \
-   --outdir <OUTDIR>
-```
+## More Information
 
-> [!WARNING]
-> Please provide pipeline parameters via the CLI or Nextflow `-params-file` option. Custom config files including those provided by the `-c` Nextflow option can be used to provide any configuration _**except for parameters**_; see [docs](https://nf-co.re/docs/usage/getting_started/configuration#custom-configuration-files).
-
-For more details and further functionality, please refer to the [usage documentation](https://nf-co.re/phaseimpute/usage) and the [parameter documentation](https://nf-co.re/phaseimpute/parameters).
-
-## Pipeline output
-
-To see the results of an example test run with a full size dataset refer to the [results](https://nf-co.re/phaseimpute/results) tab on the nf-core website pipeline page.
-For more details on the output files and reports, please refer to the [output documentation](https://nf-co.re/phaseimpute/output).
+- **Samplesheet formats**: See [docs/usage.md](docs/usage.md) for detailed input specifications
+- **Species parameters**: See [conf/species/species_config_summary.md](conf/species/species_config_summary.md) for species-specific settings
+- **Advanced options**: See [nf-core/phaseimpute documentation](https://nf-co.re/phaseimpute) for all parameters
 
 ## Credits
 
-nf-core/phaseimpute was originally written by Louis Le Nézet & Anabella Trigila.
+**Original pipeline**: [nf-core/phaseimpute](https://github.com/nf-core/phaseimpute) by Louis Le Nezet & Anabella Trigila
 
-We thank the following people for their extensive assistance in the development of this pipeline:
+**Hendrix Genetics adaptations**: Anja Burghgraef - added livestock species support, automatic genome downloads, ConformGT harmonization, and QC dashboard.
 
-- Saul Pierotti
-- Eugenia Fontecha
-- Matias Romero Victorica
-- Hemanoel Passarelli
-- Gaspard Ichas
-
-## Contributions and Support
-
-If you would like to contribute to this pipeline, please see the [contributing guidelines](.github/CONTRIBUTING.md). Further development tips can be found in the [development documentation](docs/development.md).
-
-For further information or help, don't hesitate to get in touch on the [Slack `#phaseimpute` channel](https://nfcore.slack.com/channels/phaseimpute) (you can join with [this invite](https://nf-co.re/join/slack)).
-
-## Citations
-
-If you use nf-core/phaseimpute for your analysis, please cite it using the following doi: [10.5281/zenodo.14329225](https://doi.org/10.5281/zenodo.14329225)
-
-An extensive list of references for the tools used by the pipeline, including QUILT, GLIMPSE, and STITCH, can be found in the [`CITATIONS.md`](CITATIONS.md) file.
-
-You can cite the `nf-core` publication as follows:
-
-> **The nf-core framework for community-curated bioinformatics pipelines.**
->
-> Philip Ewels, Alexander Peltzer, Sven Fillinger, Harshil Patel, Johannes Alneberg, Andreas Wilm, Maxime Ulysse Garcia, Paolo Di Tommaso & Sven Nahnsen.
->
-> _Nat Biotechnol._ 2020 Feb 13. doi: [10.1038/s41587-020-0439-x](https://dx.doi.org/10.1038/s41587-020-0439-x).
+If you use this pipeline, please cite: [10.5281/zenodo.14329225](https://doi.org/10.5281/zenodo.14329225)
