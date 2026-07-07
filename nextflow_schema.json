@@ -205,6 +205,13 @@
                     "format": "file-path",
                     "fa_icon": "fas fa-file-code",
                     "hidden": true
+                },
+                "split_imputed": {
+                    "type": "boolean",
+                    "description": "Split imputed VCF files into per-sample files",
+                    "help_text": "When false, skips the expensive BCFTOOLS_PLUGINSPLIT step on imputed VCFs (saves 5+ days for large datasets). Validation still works for truth samples only.",
+                    "default": true,
+                    "fa_icon": "fas fa-cut"
                 }
             }
         },

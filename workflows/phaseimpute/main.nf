@@ -41,6 +41,10 @@ include { LISTTOFILE                                 } from '../../modules/local
 include { BCFTOOLS_QUERY as BCFTOOLS_QUERY_IMPUTED   } from '../../modules/nf-core/bcftools/query'
 include { GAWK as GAWK_IMPUTED                       } from '../../modules/nf-core/gawk'
 include { VCF_SPLIT_BCFTOOLS as SPLIT_IMPUTED        } from '../../subworkflows/local/vcf_split_bcftools'
+include { BCFTOOLS_VIEW as BCFTOOLS_VIEW_EXTRACT     } from '../../modules/nf-core/bcftools/view'
+include { VCF_SPLIT_BCFTOOLS as SPLIT_EXTRACTED      } from '../../subworkflows/local/vcf_split_bcftools'
+include { BCFTOOLS_QUERY as BCFTOOLS_QUERY_EXTRACTED } from '../../modules/nf-core/bcftools/query'
+include { GAWK as GAWK_EXTRACTED                     } from '../../modules/nf-core/gawk'
 
 // GLIMPSE1 subworkflows
 include { BAM_GL_BCFTOOLS as GL_GLIMPSE1             } from '../../subworkflows/local/bam_gl_bcftools'
@@ -125,6 +129,7 @@ workflow PHASEIMPUTE {
     main:
 
     ch_multiqc_files = Channel.empty()
+    ch_imputed_multisample = Channel.empty()  // Stores multi-sample VCFs when split_imputed=false
 
     //
     // Simulate data if asked
@@ -535,38 +540,59 @@ workflow PHASEIMPUTE {
             //ch_versions = ch_versions.mix(PLINK_VCF_MINIMAC4.out.versions_plink)
         }
 
-        // Prepare renaming file
-        BCFTOOLS_QUERY_IMPUTED(ch_input_validate, [], [], [])
-        GAWK_IMPUTED(BCFTOOLS_QUERY_IMPUTED.out.output, [], false)
-        ch_split_imputed = ch_input_validate.join(GAWK_IMPUTED.out.output)
+        // Store multi-sample VCFs before potential splitting (needed for validation when split_imputed=false)
+        ch_imputed_multisample = ch_imputed_multisample.mix(ch_input_validate)
 
-        // Split result by samples
-        SPLIT_IMPUTED(ch_split_imputed)
-        ch_versions = ch_versions.mix(SPLIT_IMPUTED.out.versions)
-        ch_input_validate = SPLIT_IMPUTED.out.vcf_tbi
+        if (params.split_imputed) {
+            // Prepare renaming file
+            BCFTOOLS_QUERY_IMPUTED(ch_input_validate, [], [], [])
+            GAWK_IMPUTED(BCFTOOLS_QUERY_IMPUTED.out.output, [], false)
+            ch_split_imputed = ch_input_validate.join(GAWK_IMPUTED.out.output)
 
-        // Compute stats on imputed files
-        BCFTOOLS_STATS_TOOLS(
-            ch_input_validate,
-            [[],[]],
-            [[],[]],
-            [[],[]],
-            [[],[]],
-            ch_fasta.map{ [it[0], it[1]] })
-        ch_versions = ch_versions.mix(BCFTOOLS_STATS_TOOLS.out.versions)
-        ch_multiqc_files = ch_multiqc_files.mix(BCFTOOLS_STATS_TOOLS.out.stats.map{ [it[1]] })
+            // Split result by samples
+            SPLIT_IMPUTED(ch_split_imputed)
+            ch_versions = ch_versions.mix(SPLIT_IMPUTED.out.versions)
+            ch_input_validate = SPLIT_IMPUTED.out.vcf_tbi
 
-        // Export all files to csv
-        exportCsv(
-            ch_input_validate.map{ meta, file, index ->
-                [meta, [2:"imputation/${meta.tools}/samples", 3:"imputation/${meta.tools}/samples"], file, index]
-            },
-            ["id", "tools"], "sample,tools,file,index",
-            "impute.csv", "imputation/csv"
-        )
+            // Compute stats on imputed files
+            BCFTOOLS_STATS_TOOLS(
+                ch_input_validate,
+                [[],[]],
+                [[],[]],
+                [[],[]],
+                [[],[]],
+                ch_fasta.map{ [it[0], it[1]] })
+            ch_versions = ch_versions.mix(BCFTOOLS_STATS_TOOLS.out.versions)
+            ch_multiqc_files = ch_multiqc_files.mix(BCFTOOLS_STATS_TOOLS.out.stats.map{ [it[1]] })
+
+            // Export all files to csv
+            exportCsv(
+                ch_input_validate.map{ meta, file, index ->
+                    [meta, [2:"imputation/${meta.tools}/samples", 3:"imputation/${meta.tools}/samples"], file, index]
+                },
+                ["id", "tools"], "sample,tools,file,index",
+                "impute.csv", "imputation/csv"
+            )
+        } else {
+            log.info("Skipping per-sample splitting of imputed VCFs (--split_imputed false)")
+
+            // Export multi-sample VCF directly (no per-sample stats)
+            exportCsv(
+                ch_input_validate.map{ meta, file, index ->
+                    [meta, [2:"imputation/${meta.tools}", 3:"imputation/${meta.tools}"], file, index]
+                },
+                ["id", "tools"], "batch,tools,file,index",
+                "impute_multisample.csv", "imputation/csv"
+            )
+        }
     }
 
     if (params.steps.split(',').contains("validate") || params.steps.split(',').contains("all")) {
+        // If only running validate (not impute), store input for extraction when split_imputed=false
+        if (!params.steps.split(',').contains("impute") && !params.steps.split(',').contains("all")) {
+            ch_imputed_multisample = ch_imputed_multisample.mix(ch_input_validate)
+        }
+
         // Concatenate all sites into a single VCF (for GLIMPSE concordance)
         CONCAT_PANEL(ch_posfile.map{ [it[0], it[1], it[2]] })
         ch_versions    = ch_versions.mix(CONCAT_PANEL.out.versions)
@@ -635,14 +661,65 @@ workflow PHASEIMPUTE {
         ch_multiqc_files = ch_multiqc_files.mix(BCFTOOLS_STATS_TRUTH.out.stats.map{ [it[1]] })
 
         // Compute concordance analysis
-        VCF_CONCORDANCE_GLIMPSE2(
-            ch_input_validate,
-            SPLIT_TRUTH.out.vcf_tbi,
-            ch_panel_sites,
-            ch_region
-        )
-        ch_multiqc_files = ch_multiqc_files.mix(VCF_CONCORDANCE_GLIMPSE2.out.multiqc_files)
-        ch_versions      = ch_versions.mix(VCF_CONCORDANCE_GLIMPSE2.out.versions)
+        if (params.split_imputed) {
+            // Standard path: both imputed and truth are per-sample
+            VCF_CONCORDANCE_GLIMPSE2(
+                ch_input_validate,
+                SPLIT_TRUTH.out.vcf_tbi,
+                ch_panel_sites,
+                ch_region
+            )
+            ch_multiqc_files = ch_multiqc_files.mix(VCF_CONCORDANCE_GLIMPSE2.out.multiqc_files)
+            ch_versions      = ch_versions.mix(VCF_CONCORDANCE_GLIMPSE2.out.versions)
+        } else {
+            // Alternative path: extract truth samples from multi-sample imputed VCF
+            // This avoids the expensive full splitting, only splitting truth samples
+
+            // Get list of truth sample IDs from the split truth VCFs
+            ch_truth_sample_ids = SPLIT_TRUTH.out.vcf_tbi
+                .map { meta, vcf, tbi -> meta.id }
+                .collect()
+
+            // Create a samples file for bcftools view -S
+            ch_truth_samples_file = ch_truth_sample_ids
+                .map { ids -> ids.join('\n') }
+                .collectFile(name: 'truth_samples.txt', newLine: true)
+                .first()
+
+            // For each multi-sample imputed VCF, extract only the truth samples
+            ch_extract_input = ch_imputed_multisample
+                .combine(ch_truth_samples_file)
+
+            BCFTOOLS_VIEW_EXTRACT(
+                ch_extract_input.map { meta, vcf, index, samples_file -> [meta, vcf, index] },
+                [],  // regions
+                [],  // targets
+                ch_extract_input.map { meta, vcf, index, samples_file -> samples_file }
+            )
+            ch_versions = ch_versions.mix(BCFTOOLS_VIEW_EXTRACT.out.versions.first())
+
+            // Prepare the extracted VCF for splitting (only truth samples - fast)
+            ch_extracted_vcf_tbi = BCFTOOLS_VIEW_EXTRACT.out.vcf
+                .join(BCFTOOLS_VIEW_EXTRACT.out.tbi.mix(BCFTOOLS_VIEW_EXTRACT.out.csi))
+
+            BCFTOOLS_QUERY_EXTRACTED(ch_extracted_vcf_tbi, [], [], [])
+            GAWK_EXTRACTED(BCFTOOLS_QUERY_EXTRACTED.out.output, [], false)
+            ch_split_extracted = ch_extracted_vcf_tbi.join(GAWK_EXTRACTED.out.output)
+
+            // Split the extracted VCF (only truth samples - much faster than full split)
+            SPLIT_EXTRACTED(ch_split_extracted)
+            ch_versions = ch_versions.mix(SPLIT_EXTRACTED.out.versions)
+
+            // Run concordance on extracted per-sample imputed VCFs vs truth
+            VCF_CONCORDANCE_GLIMPSE2(
+                SPLIT_EXTRACTED.out.vcf_tbi,
+                SPLIT_TRUTH.out.vcf_tbi,
+                ch_panel_sites,
+                ch_region
+            )
+            ch_multiqc_files = ch_multiqc_files.mix(VCF_CONCORDANCE_GLIMPSE2.out.multiqc_files)
+            ch_versions      = ch_versions.mix(VCF_CONCORDANCE_GLIMPSE2.out.versions)
+        }
     }
 
     //
