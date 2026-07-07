@@ -25,27 +25,55 @@ process CONFORMGT {
     def match_mode = task.ext.args ?: "POS"
     def chrom_list = chromosomes.join(' ')
     """
+    #!/bin/bash
+    set -euo pipefail
+
+    echo "Starting CONFORMGT process" >&2
+    echo "Java version:" >&2
+    java -version 2>&1 || { echo "ERROR: Java not found" >&2; exit 1; }
+    echo "Working directory: \$(pwd)" >&2
+    echo "Panel files found:" >&2
+    ls -la *.vcf.gz 2>&1 | head -20 >&2
+
     # Process each chromosome
+    processed=0
     for chr in ${chrom_list}; do
-        # Find the panel file for this chromosome (match _chrX_ exactly to avoid chr1 matching chr10)
-        panel_file=\$(ls -1 *_\${chr}_*.vcf.gz 2>/dev/null | grep -v conformed | grep -v tmp | head -1)
+        # Find the panel file for this chromosome
+        # Try multiple patterns: *_chrX_*.vcf.gz, *_chrX.vcf.gz, *chrX.vcf.gz
+        panel_file=\$(ls -1 *_\${chr}_*.vcf.gz 2>/dev/null | grep -v conformed | grep -v tmp | head -1 || true)
+        if [ -z "\$panel_file" ]; then
+            panel_file=\$(ls -1 *_\${chr}.vcf.gz 2>/dev/null | grep -v conformed | grep -v tmp | head -1 || true)
+        fi
+        if [ -z "\$panel_file" ]; then
+            panel_file=\$(ls -1 *\${chr}.vcf.gz 2>/dev/null | grep -v conformed | grep -v tmp | grep -v "^\${chr}" | head -1 || true)
+        fi
 
         if [ -n "\$panel_file" ]; then
             echo "Processing \$chr with panel \$panel_file" >&2
+
+            # Remove any existing output to avoid "file exists" error
+            rm -f ${meta.id}.\$chr.tmp.vcf.gz ${meta.id}.\$chr.tmp.log
 
             java -jar ${conformgt_jar} \\
                 ref=\$panel_file \\
                 gt=${target_vcf} \\
                 match=${match_mode} \\
                 chrom=\$chr \\
-                out=${meta.id}.\$chr.tmp || true
+                out=${meta.id}.\$chr.tmp 2>&1 || echo "WARNING: conform-gt failed for \$chr, continuing..." >&2
+
+            if [ -f "${meta.id}.\$chr.tmp.vcf.gz" ]; then
+                processed=\$((processed + 1))
+            fi
         else
             echo "WARNING: No panel file found for \$chr" >&2
         fi
     done
 
+    echo "Processed \$processed chromosomes" >&2
+
     # Concatenate all chromosome outputs into ONE file
     if ls *.tmp.vcf.gz 1>/dev/null 2>&1; then
+        echo "Indexing and concatenating output files..." >&2
         # Index each tmp file first
         for f in *.tmp.vcf.gz; do
             bcftools index -t \$f
@@ -53,8 +81,11 @@ process CONFORMGT {
         bcftools concat -Oz -o ${meta.id}.conformed.vcf.gz *.tmp.vcf.gz
         bcftools index -t ${meta.id}.conformed.vcf.gz
         rm -f *.tmp.vcf.gz *.tmp.vcf.gz.tbi *.tmp.log
+        echo "Successfully created ${meta.id}.conformed.vcf.gz" >&2
     else
-        echo "ERROR: No output files created" >&2
+        echo "ERROR: No output files created after processing \$processed chromosomes" >&2
+        echo "Files in directory:" >&2
+        ls -la >&2
         exit 1
     fi
 
