@@ -94,6 +94,9 @@ include { VCF_CONFORM_GT                             } from '../../subworkflows/
 // Generate QC metrics
 include { GENERATE_QC_METRICS                        } from '../../modules/local/generate_summary_stats'
 
+// Per-chromosome stats (calculates stats before concatenation)
+include { PER_CHROMOSOME_STATS                       } from '../../modules/local/per_chromosome_stats'
+
 // VCF to PLINK conversion modules (one alias per imputation tool)
 include { PLINK_VCF as PLINK_VCF_BEAGLE5             } from '../../modules/nf-core/plink/vcf/main'
 include { PLINK_VCF as PLINK_VCF_GLIMPSE1            } from '../../modules/nf-core/plink/vcf/main'
@@ -289,6 +292,12 @@ workflow PHASEIMPUTE {
     // Channel to collect concatenated imputed VCFs (before per-sample split) for summary stats
     ch_imputed_concat = Channel.empty()
 
+    // Channel to collect per-chromosome imputed VCFs (before concatenation) for per-chr stats
+    ch_per_chr_imputed = Channel.empty()
+
+    // Channel for per-chromosome stats output (will be populated by PER_CHROMOSOME_STATS if impute runs)
+    ch_per_chr_stats_combined = Channel.empty()
+
     if (params.steps.split(',').contains("impute") || params.steps.split(',').contains("all")) {
         // Split input files into BAMs and VCFs
         ch_input_type = ch_input_impute
@@ -379,14 +388,17 @@ workflow PHASEIMPUTE {
             )
             ch_versions = ch_versions.mix(VCF_IMPUTE_GLIMPSE1.out.versions)
 
+            // Collect per-chromosome VCFs before concatenation for per-chr stats
+            ch_per_chr_imputed = ch_per_chr_imputed.mix(VCF_IMPUTE_GLIMPSE1.out.vcf_tbi)
+
             // Concatenate by chromosomes
             CONCAT_GLIMPSE1(VCF_IMPUTE_GLIMPSE1.out.vcf_tbi)
-            
+
             // Convert to PLINK format
             PLINK_VCF_GLIMPSE1(
                 CONCAT_GLIMPSE1.out.vcf_tbi.map { meta, vcf, tbi -> [meta, vcf] }
             )
-            
+
             ch_input_validate = ch_input_validate.mix(CONCAT_GLIMPSE1.out.vcf_tbi)
             ch_imputed_concat = ch_imputed_concat.mix(CONCAT_GLIMPSE1.out.vcf_tbi)
             //ch_versions = ch_versions.mix(PLINK_VCF_GLIMPSE1.out.versions_plink)
@@ -410,14 +422,18 @@ workflow PHASEIMPUTE {
                 ch_fasta
             )
             ch_versions = ch_versions.mix(BAM_VCF_IMPUTE_GLIMPSE2.out.versions)
+
+            // Collect per-chromosome VCFs before concatenation for per-chr stats
+            ch_per_chr_imputed = ch_per_chr_imputed.mix(BAM_VCF_IMPUTE_GLIMPSE2.out.vcf_tbi)
+
             // Concatenate by chromosomes
             CONCAT_GLIMPSE2(BAM_VCF_IMPUTE_GLIMPSE2.out.vcf_tbi)
-            
+
             // Convert to PLINK format
             PLINK_VCF_GLIMPSE2(
                 CONCAT_GLIMPSE2.out.vcf_tbi.map { meta, vcf, tbi -> [meta, vcf] }
             )
-            
+
             ch_input_validate = ch_input_validate.mix(CONCAT_GLIMPSE2.out.vcf_tbi)
             ch_imputed_concat = ch_imputed_concat.mix(CONCAT_GLIMPSE2.out.vcf_tbi)
             //ch_versions = ch_versions.mix(PLINK_VCF_GLIMPSE2.out.versions_plink)
@@ -435,14 +451,17 @@ workflow PHASEIMPUTE {
             )
             ch_versions = ch_versions.mix(BAM_IMPUTE_STITCH.out.versions)
 
+            // Collect per-chromosome VCFs before concatenation for per-chr stats
+            ch_per_chr_imputed = ch_per_chr_imputed.mix(BAM_IMPUTE_STITCH.out.vcf_tbi)
+
             // Concatenate by chromosomes
             CONCAT_STITCH(BAM_IMPUTE_STITCH.out.vcf_tbi)
-            
+
             // Convert to PLINK format
             PLINK_VCF_STITCH(
                 CONCAT_STITCH.out.vcf_tbi.map { meta, vcf, tbi -> [meta, vcf] }
             )
-            
+
             ch_input_validate = ch_input_validate.mix(CONCAT_STITCH.out.vcf_tbi)
             ch_imputed_concat = ch_imputed_concat.mix(CONCAT_STITCH.out.vcf_tbi)
             //ch_versions = ch_versions.mix(PLINK_VCF_STITCH.out.versions_plink)
@@ -466,14 +485,17 @@ workflow PHASEIMPUTE {
             )
             ch_versions = ch_versions.mix(BAM_IMPUTE_QUILT.out.versions)
 
+            // Collect per-chromosome VCFs before concatenation for per-chr stats
+            ch_per_chr_imputed = ch_per_chr_imputed.mix(BAM_IMPUTE_QUILT.out.vcf_tbi)
+
             // Concatenate by chromosomes
             CONCAT_QUILT(BAM_IMPUTE_QUILT.out.vcf_tbi)
-            
+
             // Convert to PLINK format
             PLINK_VCF_QUILT(
                 CONCAT_QUILT.out.vcf_tbi.map { meta, vcf, tbi -> [meta, vcf] }
             )
-            
+
             ch_input_validate = ch_input_validate.mix(CONCAT_QUILT.out.vcf_tbi)
             ch_imputed_concat = ch_imputed_concat.mix(CONCAT_QUILT.out.vcf_tbi)
             //ch_versions = ch_versions.mix(PLINK_VCF_QUILT.out.versions_plink)
@@ -495,6 +517,9 @@ workflow PHASEIMPUTE {
             )
             ch_versions = ch_versions.mix(VCF_IMPUTE_BEAGLE5.out.versions)
 
+            // Collect per-chromosome VCFs before concatenation for per-chr stats
+            ch_per_chr_imputed = ch_per_chr_imputed.mix(VCF_IMPUTE_BEAGLE5.out.vcf_index)
+
             // Concatenate by chromosomes
             CONCAT_BEAGLE5(VCF_IMPUTE_BEAGLE5.out.vcf_index)
 
@@ -502,7 +527,7 @@ workflow PHASEIMPUTE {
             PLINK_VCF_BEAGLE5(
                 CONCAT_BEAGLE5.out.vcf_tbi.map { meta, vcf, tbi -> [meta, vcf] }
             )
-            
+
             ch_input_validate = ch_input_validate.mix(CONCAT_BEAGLE5.out.vcf_tbi)
             ch_imputed_concat = ch_imputed_concat.mix(CONCAT_BEAGLE5.out.vcf_tbi)
             //ch_versions = ch_versions.mix(PLINK_VCF_BEAGLE5.out.versions_plink)
@@ -527,14 +552,17 @@ workflow PHASEIMPUTE {
             )
             ch_versions = ch_versions.mix(VCF_IMPUTE_MINIMAC4.out.versions)
 
+            // Collect per-chromosome VCFs before concatenation for per-chr stats
+            ch_per_chr_imputed = ch_per_chr_imputed.mix(VCF_IMPUTE_MINIMAC4.out.vcf_index)
+
             // Concatenate by chromosomes
             CONCAT_MINIMAC4(VCF_IMPUTE_MINIMAC4.out.vcf_index)
-            
+
             // Convert to PLINK format
             PLINK_VCF_MINIMAC4(
                 CONCAT_MINIMAC4.out.vcf_tbi.map { meta, vcf, tbi -> [meta, vcf] }
             )
-            
+
             ch_input_validate = ch_input_validate.mix(CONCAT_MINIMAC4.out.vcf_tbi)
             ch_imputed_concat = ch_imputed_concat.mix(CONCAT_MINIMAC4.out.vcf_tbi)
             //ch_versions = ch_versions.mix(PLINK_VCF_MINIMAC4.out.versions_plink)
@@ -723,6 +751,95 @@ workflow PHASEIMPUTE {
     }
 
     //
+    // Calculate per-chromosome statistics (SNP counts before/after imputation + accuracy if truth available)
+    // Runs after imputation step, collects per-chr VCFs before they are concatenated
+    //
+    if (params.steps.split(',').contains("impute") || params.steps.split(',').contains("all")) {
+
+        // Prepare target VCF channel for per-chr stats (whole-genome, will extract per-chr with bcftools -r)
+        ch_target_for_perchr = Channel.empty()
+        if (params.input) {
+            def headers_perchr = file(params.input).readLines()[0].split(',')*.trim()*.toLowerCase()
+            if (headers_perchr.contains('file') || headers_perchr.contains('vcf')) {
+                ch_target_for_perchr = Channel
+                    .fromPath(params.input)
+                    .splitCsv(header: true)
+                    .map { row ->
+                        def vcf_path = row.containsKey('file') ? row.file : row.vcf
+                        def vcf_file = file(vcf_path)
+                        def idx_file = file(vcf_path + ".tbi", checkIfExists: false)
+                        if (!idx_file.exists()) {
+                            idx_file = file(vcf_path + ".csi", checkIfExists: false)
+                        }
+                        [[id: "target"], vcf_file, idx_file]
+                    }
+                    .first()
+            } else {
+                ch_target_for_perchr = Channel.of([[id: "target"], file("NO_FILE"), file("NO_FILE")])
+            }
+        } else {
+            ch_target_for_perchr = Channel.of([[id: "target"], file("NO_FILE"), file("NO_FILE")])
+        }
+
+        // Prepare truth VCF channel for per-chr stats (whole-genome, will extract per-chr with bcftools -r)
+        ch_truth_for_perchr = Channel.empty()
+        if (params.input_truth) {
+            ch_truth_for_perchr = Channel
+                .fromPath(params.input_truth)
+                .splitCsv(header: true)
+                .map { row ->
+                    def vcf_path = row.containsKey('file') ? row.file : row.vcf
+                    def vcf_file = file(vcf_path)
+                    def idx_file = file(vcf_path + ".tbi", checkIfExists: false)
+                    if (!idx_file.exists()) {
+                        idx_file = file(vcf_path + ".csi", checkIfExists: false)
+                    }
+                    [[id: "truth"], vcf_file, idx_file]
+                }
+                .first()
+        } else {
+            ch_truth_for_perchr = Channel.of([[id: "truth"], file("NO_FILE"), file("NO_FILE")])
+        }
+
+        // Run PER_CHROMOSOME_STATS for each per-chr imputed VCF
+        // Target and truth are whole-genome VCFs - the process extracts per-chr data using bcftools -r
+        ch_perchr_input = ch_per_chr_imputed
+            .combine(ch_target_for_perchr)
+            .combine(ch_truth_for_perchr)
+            .map { meta_imp, vcf_imp, idx_imp, meta_target, vcf_target, idx_target, meta_truth, vcf_truth, idx_truth ->
+                [
+                    [meta_imp, vcf_imp, idx_imp],
+                    [meta_target, vcf_target, idx_target],
+                    [meta_truth + [chr: meta_imp.chr], vcf_truth, idx_truth]
+                ]
+            }
+            .multiMap { imp, target, truth ->
+                imputed: imp
+                target: target
+                truth: truth
+            }
+
+        PER_CHROMOSOME_STATS(
+            ch_perchr_input.imputed,
+            ch_perchr_input.target,
+            ch_perchr_input.truth
+        )
+        ch_versions = ch_versions.mix(PER_CHROMOSOME_STATS.out.versions.first())
+
+        // Collect all per-chromosome stats into a single CSV file
+        ch_per_chr_stats_combined = ch_per_chr_stats_combined.mix(
+            PER_CHROMOSOME_STATS.out.stats
+                .collectFile(
+                    name: 'per_chromosome_stats.csv',
+                    storeDir: "${params.outdir}/qc_stats",
+                    keepHeader: true,
+                    skip: 1
+                )
+        )
+    }
+
+
+    //
     // Generate summary statistics (runs after all workflow steps)
     // Collect all VCF files from input CSVs
     //
@@ -790,12 +907,17 @@ workflow PHASEIMPUTE {
         .collect()
         .ifEmpty([file("NO_FILE")])
 
+    // Get per-chromosome stats file (if available) for faster SNP counting
+    ch_per_chr_stats_for_qc = ch_per_chr_stats_combined
+        .ifEmpty(file("NO_FILE"))
+
     // Generate all QC metrics (just summary stats)
     GENERATE_QC_METRICS(
         ch_target_vcf,
         ch_truth_vcf_stats,
         ch_panel_vcf_stats,
-        ch_imputed_vcf_stats
+        ch_imputed_vcf_stats,
+        ch_per_chr_stats_for_qc
     )
     ch_versions = ch_versions.mix(GENERATE_QC_METRICS.out.versions)
     ch_multiqc_files = ch_multiqc_files.mix(GENERATE_QC_METRICS.out.summary_stats)

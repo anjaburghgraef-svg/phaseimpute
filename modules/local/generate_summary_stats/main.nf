@@ -12,6 +12,7 @@ process GENERATE_QC_METRICS {
     path truth_vcfs, stageAs: "truth_*.vcf.gz"
     path panel_vcfs, stageAs: "panel_*.vcf.gz"
     path imputed_vcfs, stageAs: "imputed_*.vcf.gz"
+    path per_chr_stats
 
     output:
     path "summary_stats.txt", emit: summary_stats
@@ -21,13 +22,16 @@ process GENERATE_QC_METRICS {
     task.ext.when == null || task.ext.when
 
     script:
+    def has_per_chr = per_chr_stats && !per_chr_stats.name.contains("NO_FILE")
     """
     #!/usr/bin/env bash
 
     # Function to get sample count and SNP count from multiple VCF files
-    # Optimized: only queries first VCF for SNPs, samples counted efficiently
+    # For samples: assumes same samples in all VCFs (per-chromosome splits)
+    # For SNPs: sums across all VCF files (handles per-chromosome split panels)
     get_vcf_stats() {
         local pattern=\$1
+        local sum_snps=\${2:-false}  # If true, sum SNPs across all files
         local vcf_files=(\$(ls \${pattern} 2>/dev/null | grep -v "NO_FILE"))
 
         if [ \${#vcf_files[@]} -eq 0 ]; then
@@ -58,27 +62,66 @@ process GENERATE_QC_METRICS {
             rm -f "\$sample_file"
         fi
 
-        # Get SNP count from first VCF only
-        local total_snps=\$(bcftools index --nrecords "\$first_vcf" 2>/dev/null)
-        if [ -z "\$total_snps" ] || [ "\$total_snps" = "0" ]; then
-            total_snps=\$(bcftools view -H "\$first_vcf" 2>/dev/null | wc -l)
+        # Get SNP count - sum across all files if requested (for panel with per-chr VCFs)
+        local total_snps=0
+        if [ "\$sum_snps" = "true" ]; then
+            for vcf in "\${vcf_files[@]}"; do
+                local file_snps=\$(bcftools index --nrecords "\$vcf" 2>/dev/null)
+                if [ -z "\$file_snps" ] || [ "\$file_snps" = "0" ]; then
+                    file_snps=\$(bcftools view -H "\$vcf" 2>/dev/null | wc -l)
+                fi
+                file_snps=\${file_snps:-0}
+                total_snps=\$((total_snps + file_snps))
+            done
+        else
+            # Just use first VCF (for target/imputed which are typically same structure)
+            total_snps=\$(bcftools index --nrecords "\$first_vcf" 2>/dev/null)
+            if [ -z "\$total_snps" ] || [ "\$total_snps" = "0" ]; then
+                total_snps=\$(bcftools view -H "\$first_vcf" 2>/dev/null | wc -l)
+            fi
+            total_snps=\${total_snps:-0}
         fi
-        total_snps=\${total_snps:-0}
 
         echo "\${samples}\t\${total_snps}"
     }
 
-    # Get stats for target
-    read TARGET_SAMPLES TARGET_SNPS <<< \$(get_vcf_stats "target_*.vcf.gz")
+    # Check if we have per-chromosome stats to use for faster SNP counting
+    HAS_PER_CHR=${has_per_chr ? 'true' : 'false'}
 
-    # Get stats for truth
-    read TRUTH_SAMPLES TRUTH_SNPS <<< \$(get_vcf_stats "truth_*.vcf.gz")
+    if [ "\$HAS_PER_CHR" = "true" ] && [ -f "${per_chr_stats}" ]; then
+        echo "Using per-chromosome stats for SNP counts" >&2
 
-    # Get stats for panel
-    read PANEL_SAMPLES PANEL_SNPS <<< \$(get_vcf_stats "panel_*.vcf.gz")
+        # Get the first tool name from the per-chr stats (to avoid summing across tools)
+        FIRST_TOOL=\$(awk -F',' 'NR==2 {print \$2}' "${per_chr_stats}")
+        echo "Using tool '\$FIRST_TOOL' for SNP counts" >&2
 
-    # Get stats for imputed
-    read IMPUTED_SAMPLES IMPUTED_SNPS <<< \$(get_vcf_stats "imputed_*.vcf.gz")
+        # Sum imputed SNPs from per-chr stats for first tool only (column 4: snps_after_imputation)
+        IMPUTED_SNPS=\$(awk -F',' -v tool="\$FIRST_TOOL" 'NR>1 && \$2==tool && \$4 != "NA" {sum += \$4} END {print sum+0}' "${per_chr_stats}")
+
+        # Sum target SNPs from per-chr stats for first tool only (column 3: snps_before_imputation)
+        TARGET_SNPS_FROM_CHR=\$(awk -F',' -v tool="\$FIRST_TOOL" 'NR>1 && \$2==tool && \$3 != "NA" {sum += \$3} END {print sum+0}' "${per_chr_stats}")
+
+        # Get sample counts from VCFs (still need this)
+        read TARGET_SAMPLES _unused <<< \$(get_vcf_stats "target_*.vcf.gz")
+        read IMPUTED_SAMPLES _unused <<< \$(get_vcf_stats "imputed_*.vcf.gz")
+
+        # Use per-chr target SNPs if available, otherwise fall back to VCF counting
+        if [ "\$TARGET_SNPS_FROM_CHR" -gt 0 ]; then
+            TARGET_SNPS=\$TARGET_SNPS_FROM_CHR
+        else
+            read _unused TARGET_SNPS <<< \$(get_vcf_stats "target_*.vcf.gz")
+        fi
+    else
+        # Fallback to traditional VCF counting
+        read TARGET_SAMPLES TARGET_SNPS <<< \$(get_vcf_stats "target_*.vcf.gz")
+        read IMPUTED_SAMPLES IMPUTED_SNPS <<< \$(get_vcf_stats "imputed_*.vcf.gz")
+    fi
+
+    # Get stats for truth (always from VCF) - sum across all files in case of per-chr split
+    read TRUTH_SAMPLES TRUTH_SNPS <<< \$(get_vcf_stats "truth_*.vcf.gz" "true")
+
+    # Get stats for panel (always from VCF) - sum across all files for per-chr panels
+    read PANEL_SAMPLES PANEL_SNPS <<< \$(get_vcf_stats "panel_*.vcf.gz" "true")
 
     # Write summary stats
     cat > summary_stats.txt <<EOF

@@ -281,7 +281,36 @@ a:hover {
   color: white;
 }
 
+/* Per-chromosome table - compact columns */
+#chr_stats_table table {
+  font-size: 13px;
+}
+
+#chr_stats_table th {
+  padding: 6px 8px !important;
+  text-align: center;
+  vertical-align: middle;
+  line-height: 1.3;
+}
+
+#chr_stats_table td {
+  padding: 6px 8px !important;
+  white-space: nowrap;
+}
+
 /* Responsive */
+@media (max-width: 1400px) {
+  /* Stack chromosome tab columns on medium screens */
+  #chromosome-content > div[style*="display: flex"] {
+    flex-direction: column !important;
+  }
+
+  #chromosome-content > div[style*="display: flex"] > div {
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+}
+
 @media (max-width: 1200px) {
   /* Stack two-column layouts on smaller screens */
   #quality-content > div[style*="display: flex"] {

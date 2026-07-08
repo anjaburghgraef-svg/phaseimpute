@@ -177,14 +177,14 @@ load_glimpse_accuracy <- function(base_dir) {
       })
 
       # Convert to dataframe - keep full sample name with tool suffix
+      # Order: General Concordance, Non-Ref Concordance, Dosage r², Best GT r²
       result <- data.frame(
         Sample = data$Sample,  # Keep full sample name (e.g., "DUR_10004940.beagle5")
         N_Variants = sapply(parsed_data, function(x) x$n_variants),
-        Best_GT_r2 = sapply(parsed_data, function(x) x$best_gt_rsquared),
-        Dosage_r2 = sapply(parsed_data, function(x) x$imputed_ds_rsquared),
         General_Concordance_Pct = sapply(parsed_data, function(x) x$general_concordance),
         NonRef_Concordance_Pct = sapply(parsed_data, function(x) x$non_ref_concordance),
-        NonRef_Discordance_Pct = sapply(parsed_data, function(x) x$non_ref_discordance),
+        Dosage_r2 = sapply(parsed_data, function(x) x$imputed_ds_rsquared),
+        Best_GT_r2 = sapply(parsed_data, function(x) x$best_gt_rsquared),
         stringsAsFactors = FALSE
       )
 
@@ -226,10 +226,18 @@ load_maf_accuracy <- function(base_dir) {
     for (i in 1:nrow(data)) {
       sample_name <- data$Sample[i]
       # Extract tool from sample name (e.g., "beagle5" or "glimpse2")
-      tool <- if (grepl("Tbeagle5$", sample_name)) {
+      tool <- if (grepl("Tbeagle5$|_beagle5$", sample_name)) {
         "beagle5"
-      } else if (grepl("Tglimpse2$", sample_name)) {
+      } else if (grepl("Tglimpse2$|_glimpse2$", sample_name)) {
         "glimpse2"
+      } else if (grepl("Tglimpse1$|_glimpse1$", sample_name)) {
+        "glimpse1"
+      } else if (grepl("Tminimac4$|_minimac4$", sample_name)) {
+        "minimac4"
+      } else if (grepl("Tquilt$|_quilt$", sample_name)) {
+        "quilt"
+      } else if (grepl("Tstitch$|_stitch$", sample_name)) {
+        "stitch"
       } else {
         "unknown"
       }
@@ -246,7 +254,8 @@ load_maf_accuracy <- function(base_dir) {
               MAF = parts[1],
               Dosage_r2 = parts[2],
               Tool = tool,
-              Sample = sample_name
+              Sample = sample_name,
+              stringsAsFactors = FALSE
             )
           }
         }
@@ -255,42 +264,18 @@ load_maf_accuracy <- function(base_dir) {
 
     if (length(result_list) == 0) return(NULL)
 
-    # Combine all results
+    # Combine all results - keep per-sample data
     all_data <- do.call(rbind, result_list)
-
-    # Average by MAF bin and tool using base R
     all_data$MAF <- as.numeric(all_data$MAF)
     all_data$Dosage_r2 <- as.numeric(all_data$Dosage_r2)
 
-    # Round MAF to consistent precision (3 decimal places) to group properly
-    all_data$MAF_rounded <- round(all_data$MAF, 3)
-
-    # Get unique combinations of MAF and Tool
-    unique_tools <- unique(all_data$Tool)
-    unique_mafs <- unique(all_data$MAF_rounded)
-
-    agg_list <- list()
-    for (tool in unique_tools) {
-      for (maf in unique_mafs) {
-        subset_data <- all_data[all_data$Tool == tool & all_data$MAF_rounded == maf, ]
-        if (nrow(subset_data) > 0) {
-          agg_list[[length(agg_list) + 1]] <- data.frame(
-            MAF = maf,
-            Tool = tool,
-            Dosage_r2 = mean(subset_data$Dosage_r2, na.rm = TRUE),
-            stringsAsFactors = FALSE
-          )
-        }
-      }
-    }
-
-    agg_data <- do.call(rbind, agg_list)
-
-    return(agg_data)
+    # Return the per-sample data (aggregation done in plot if needed)
+    return(all_data)
   }, error = function(e) {
     return(NULL)
   })
 }
+
 
 # Load project summary
 load_project_summary <- function(base_dir) {
@@ -354,7 +339,76 @@ load_validation_data <- function(base_dir) {
   })
 }
 
-# Chromosome accuracy removed - not feasible with current pipeline
+# Load per-chromosome stats from pipeline
+load_per_chr_stats <- function(base_dir) {
+  stats_file <- find_file(base_dir, "per_chromosome_stats.csv",
+                          c("qc_stats/", "*/qc_stats/", "."))
+  if (is.null(stats_file)) return(NULL)
+
+  tryCatch({
+    data <- read.csv(stats_file, stringsAsFactors = FALSE)
+    # Expected columns: chr, tool, snps_before_imputation, snps_after_imputation,
+    #                   general_concordance, dosage_r2, best_gt_r2, non_ref_concordance
+    return(data)
+  }, error = function(e) {
+    return(NULL)
+  })
+}
+
+# Helper function to clean sample names
+# Converts "ISA_0555957_PREF_PANEL_Tbeagle5" to "ISA_0555957.beagle5"
+clean_sample_name <- function(sample_name) {
+  # Extract tool suffix
+  tool <- ""
+  if (grepl("Tbeagle5$|_beagle5$", sample_name)) tool <- "beagle5"
+  else if (grepl("Tglimpse2$|_glimpse2$", sample_name)) tool <- "glimpse2"
+  else if (grepl("Tglimpse1$|_glimpse1$", sample_name)) tool <- "glimpse1"
+  else if (grepl("Tminimac4$|_minimac4$", sample_name)) tool <- "minimac4"
+  else if (grepl("Tquilt$|_quilt$", sample_name)) tool <- "quilt"
+  else if (grepl("Tstitch$|_stitch$", sample_name)) tool <- "stitch"
+
+  # Remove tool suffix and intermediate parts like _PREF_PANEL_
+  base_name <- gsub("(_PREF_PANEL)?_?T?(beagle5|glimpse2|glimpse1|minimac4|quilt|stitch)$", "", sample_name)
+
+  # Return cleaned name
+  if (tool != "") {
+    paste0(base_name, ".", tool)
+  } else {
+    sample_name
+  }
+}
+
+# Helper function to sort chromosomes naturally (1, 2, ..., 22, X, Y, MT)
+# Handles both "chr1" and "1" formats
+sort_chromosomes <- function(chroms) {
+  # Remove chr prefix for sorting, keep track of original format
+  has_chr_prefix <- any(grepl("^chr", chroms, ignore.case = TRUE))
+  chroms_clean <- gsub("^chr", "", chroms, ignore.case = TRUE)
+
+  # Extract numeric and non-numeric chromosomes
+  numeric_chroms <- chroms_clean[grepl("^[0-9]+$", chroms_clean)]
+  non_numeric <- chroms_clean[!grepl("^[0-9]+$", chroms_clean)]
+
+  # Sort numeric chromosomes by value
+  sorted_numeric <- as.character(sort(as.numeric(unique(numeric_chroms))))
+
+  # Sort non-numeric alphabetically but put common ones first
+  priority_order <- c("X", "Y", "MT", "M")
+  priority_chroms <- unique(non_numeric[non_numeric %in% priority_order])
+  other_chroms <- unique(non_numeric[!non_numeric %in% priority_order])
+
+  # Order priority chroms by their position in priority_order
+  priority_chroms <- priority_chroms[order(match(priority_chroms, priority_order))]
+
+  sorted_clean <- c(sorted_numeric, priority_chroms, sort(other_chroms))
+
+  # Add chr prefix back if original had it
+  if (has_chr_prefix) {
+    sorted_clean <- paste0("chr", sorted_clean)
+  }
+
+  sorted_clean
+}
 
 # Load INFO score distribution from pipeline-generated file
 load_info_scores <- function(base_dir) {
@@ -472,7 +526,10 @@ ui <- fluidPage(
                  onclick = "switchTab('overview')"),
       tags$button("Quality & Accuracy", class = "navbar-tab",
                  `data-tab` = "quality",
-                 onclick = "switchTab('quality')")
+                 onclick = "switchTab('quality')"),
+      tags$button("Per-Chromosome Stats", class = "navbar-tab",
+                 `data-tab` = "chromosome",
+                 onclick = "switchTab('chromosome')")
   ),
     tags$div(
       class = "navbar-links",
@@ -564,54 +621,94 @@ ui <- fluidPage(
 
         # Left column - MAF plot
         tags$div(
-          style = "flex: 1;",
+          style = "flex: 0 0 50%; min-width: 0;",
           tags$div(
             class = "section",
             id = "maf-plot",
             tags$h3("Imputation Quality by MAF"),
             tags$div(
               class = "content-box",
-              plotlyOutput("maf_spectrum_plot", height = "550px")
+              tags$div(
+                style = "margin-bottom: 10px;",
+                checkboxInput("show_by_sample", "Show by sample", value = FALSE)
+              ),
+              plotlyOutput("maf_spectrum_plot", height = "450px"),
+              uiOutput("maf_legend_box")
             )
           )
         ),
 
         # Right column - Accuracy metrics stacked
         tags$div(
-          style = "flex: 1; display: flex; flex-direction: column; gap: 0px;",
-
+          style = "flex: 0 0 calc(50% - 10px); min-width: 0; display: flex; flex-direction: column; gap: 10px;",
           tags$div(
             class = "section",
             id = "overall-accuracy",
-            style = "margin-bottom: 0;",
             tags$h3("Overall Accuracy Metrics"),
             tags$div(
               class = "content-box",
               uiOutput("tool_accuracy_display")
             )
           ),
-
           tags$div(
             class = "section",
-            id = "quality-summary",
-            style = "margin-bottom: 0;",
-            tags$h3("Accuracy Plots"),
+            id = "per-sample-accuracy",
+            tags$h3("Per-Sample Accuracy"),
             tags$div(
               class = "content-box",
-              plotlyOutput("quality_summary_plot", height = "280px")
+              uiOutput("sample_accuracy_display")
             )
           )
         )
-      ),
+      )
+    ),
 
-      # Bottom row: Per-sample accuracy (full width)
+    # Per-Chromosome Stats tab content
+    tags$div(
+      id = "chromosome-content",
+      class = "tab-content",
+      style = "display: none;",
+
+      # Two columns: Summary table (left) + Charts stacked (right)
       tags$div(
-        class = "section",
-        id = "per-sample-accuracy",
-        tags$h3("Per-Sample Accuracy"),
+        style = "display: flex; gap: 10px; width: 100%; overflow: hidden;",
+
+        # Left column - Summary table (flexible, shrinks to fit)
         tags$div(
-          class = "content-box",
-          uiOutput("sample_accuracy_display")
+          style = "flex: 1; min-width: 0; max-width: 55%;",
+          tags$div(
+            class = "section",
+            id = "chr-summary",
+            tags$h3("Per-Chromosome Summary"),
+            tags$div(
+              class = "content-box",
+              style = "overflow-x: auto;",
+              DTOutput("chr_stats_table")
+            )
+          )
+        ),
+
+        # Right column - Charts stacked
+        tags$div(
+          style = "flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px;",
+          tags$div(
+            class = "section",
+            id = "chr-snp-plot",
+            tags$h3("SNP Counts by Chromosome"),
+            tags$div(
+              class = "content-box",
+              plotlyOutput("chr_snp_plot", height = "300px")
+            )
+          ),
+          tags$div(
+            class = "section",
+            id = "chr-accuracy",
+            tags$h3("Accuracy by Chromosome"),
+            tags$div(
+              class = "content-box",
+              plotlyOutput("chr_accuracy_plot", height = "300px")
+            )
+          )
         )
       )
     )
@@ -632,7 +729,8 @@ server <- function(input, output, session) {
     tool_used = NULL,
     base_dir = NULL,
     summary_stats = NULL,
-    info_scores = NULL
+    info_scores = NULL,
+    per_chr_stats = NULL
   )
 
   # Load data when button is clicked
@@ -712,7 +810,9 @@ server <- function(input, output, session) {
         data_store$maf_spectrum <- load_maf_accuracy(base_dir)
       }
 
-      # Chromosome accuracy and INFO scores removed - not feasible/useful
+      # Load per-chromosome stats
+      incProgress(0.05, detail = "Loading per-chromosome stats")
+      data_store$per_chr_stats <- load_per_chr_stats(base_dir)
     })
 
     # Show diagnostic message
@@ -722,6 +822,7 @@ server <- function(input, output, session) {
     if (!is.null(data_store$summary_stats)) msg_parts <- c(msg_parts, "Summary Stats")
     if (!is.null(data_store$tool_accuracy)) msg_parts <- c(msg_parts, paste0("Accuracy (", nrow(data_store$tool_accuracy), " rows)"))
     if (!is.null(data_store$maf_spectrum)) msg_parts <- c(msg_parts, paste0("MAF (", nrow(data_store$maf_spectrum), " rows)"))
+    if (!is.null(data_store$per_chr_stats)) msg_parts <- c(msg_parts, paste0("Per-Chr (", nrow(data_store$per_chr_stats), " rows)"))
 
     notification_msg <- if (length(msg_parts) > 0) {
       paste("Loaded:", paste(msg_parts, collapse = ", "))
@@ -786,7 +887,7 @@ server <- function(input, output, session) {
               onclick = "scrollToSection('sample-overview'); return false;",
               "Sample Overview")
       )
-    } else {
+    } else if (active_tab == "quality") {
       # Quality & Accuracy tab
       tagList(
         tags$a(href = "#maf-plot", class = "sidebar-nav-link",
@@ -801,6 +902,19 @@ server <- function(input, output, session) {
         tags$a(href = "#per-sample-accuracy", class = "sidebar-nav-link",
               onclick = "scrollToSection('per-sample-accuracy'); return false;",
               "Per-Sample Accuracy")
+      )
+    } else {
+      # Per-Chromosome Stats tab
+      tagList(
+        tags$a(href = "#chr-summary", class = "sidebar-nav-link",
+              onclick = "scrollToSection('chr-summary'); return false;",
+              "Per-Chromosome Summary"),
+        tags$a(href = "#chr-snp-plot", class = "sidebar-nav-link",
+              onclick = "scrollToSection('chr-snp-plot'); return false;",
+              "SNP Count Chart"),
+        tags$a(href = "#chr-accuracy", class = "sidebar-nav-link",
+              onclick = "scrollToSection('chr-accuracy'); return false;",
+              "Accuracy by Chromosome")
       )
     }
   })
@@ -1006,47 +1120,98 @@ server <- function(input, output, session) {
       }, error = function(e) {})
     }
 
-    # Get panel samples from panel VCF files
+    # Get panel samples from various sources
     if (!is.null(data_store$base_dir)) {
+      panel_samples <- c()
+
+      # Method 1: Try to get from REF_PANEL bcftools stats (when prep_panel was run)
       tryCatch({
-        # Look for panel CSV
-        panel_csv <- find_file(data_store$base_dir, "panel.csv",
-                               c("prep_panel/csv/", "*/prep_panel/csv/", "."))
+        panel_stats_file <- find_file(data_store$base_dir, "REF_PANEL.panel.bcftools_stats.txt",
+                                       c("prep_panel/stats/", "*/prep_panel/stats/", "."))
+        if (!is.null(panel_stats_file) && file.exists(panel_stats_file)) {
+          stats_lines <- readLines(panel_stats_file)
+          # Look for sample lines - format: "PSC	0	sample_name	..."
+          psc_lines <- grep("^PSC\t0\t", stats_lines, value = TRUE)
+          if (length(psc_lines) > 0) {
+            # Extract sample names from PSC lines
+            panel_samples <- sapply(strsplit(psc_lines, "\t"), function(x) x[3])
+          }
+        }
+      }, error = function(e) {})
 
-        if (!is.null(panel_csv) && file.exists(panel_csv)) {
-          csv_data <- read.csv(panel_csv, stringsAsFactors = FALSE, header = TRUE)
-          if (nrow(csv_data) > 0) {
-            # Get first VCF file from the CSV
-            vcf_path <- csv_data$vcf[1]
+      # Method 2: Try the original input panel CSV from params (when panel was pre-prepared)
+      # Panel CSV has columns: panel, chromosome, file, index - need to query VCF for sample names
+      if (length(panel_samples) == 0 && !is.null(data_store$params)) {
+        tryCatch({
+          panel_param <- data_store$params$panel
+          if (!is.null(panel_param) && file.exists(panel_param)) {
+            panel_csv_data <- read.csv(panel_param, stringsAsFactors = FALSE, header = TRUE)
+            if (nrow(panel_csv_data) > 0) {
+              # Get the VCF file path (column might be 'file' or 'vcf')
+              vcf_col <- if ("file" %in% names(panel_csv_data)) "file" else if ("vcf" %in% names(panel_csv_data)) "vcf" else NULL
+              if (!is.null(vcf_col)) {
+                vcf_path <- panel_csv_data[[vcf_col]][1]
+                if (file.exists(vcf_path)) {
+                  # Try bcftools if available
+                  bcftools_result <- tryCatch({
+                    sample_cmd <- paste0("bcftools query -l ", shQuote(vcf_path))
+                    system(sample_cmd, intern = TRUE, ignore.stderr = TRUE)
+                  }, error = function(e) NULL, warning = function(w) NULL)
 
-            if (file.exists(vcf_path)) {
-              # Use bcftools to query sample names
-              sample_cmd <- paste0("bcftools query -l ", shQuote(vcf_path))
-              panel_samples <- system(sample_cmd, intern = TRUE)
-
-              # Add panel samples to list
-              for (panel_sample in panel_samples) {
-                if (panel_sample %in% sample_list$Sample) {
-                  # Update existing entry
-                  idx <- which(sample_list$Sample == panel_sample)
-                  sample_list$In_Panel[idx] <- "Yes"
-                } else {
-                  # Add new entry
-                  sample_list <- rbind(sample_list, data.frame(
-                    Sample = panel_sample,
-                    In_Target = "No",
-                    In_Truth = "No",
-                    In_Panel = "Yes",
-                    stringsAsFactors = FALSE
-                  ))
+                  if (!is.null(bcftools_result) && length(bcftools_result) > 0) {
+                    panel_samples <- bcftools_result
+                  }
                 }
               }
             }
           }
+        }, error = function(e) {})
+      }
+
+      # Method 3: Try output panel.csv + bcftools (if available)
+      if (length(panel_samples) == 0) {
+        tryCatch({
+          panel_csv <- find_file(data_store$base_dir, "panel.csv",
+                                 c("prep_panel/csv/", "*/prep_panel/csv/", "."))
+
+          if (!is.null(panel_csv) && file.exists(panel_csv)) {
+            csv_data <- read.csv(panel_csv, stringsAsFactors = FALSE, header = TRUE)
+            if (nrow(csv_data) > 0 && "vcf" %in% names(csv_data)) {
+              vcf_path <- csv_data$vcf[1]
+
+              if (file.exists(vcf_path)) {
+                # Try bcftools if available
+                bcftools_result <- tryCatch({
+                  sample_cmd <- paste0("bcftools query -l ", shQuote(vcf_path))
+                  system(sample_cmd, intern = TRUE, ignore.stderr = TRUE)
+                }, error = function(e) NULL, warning = function(w) NULL)
+
+                if (!is.null(bcftools_result) && length(bcftools_result) > 0) {
+                  panel_samples <- bcftools_result
+                }
+              }
+            }
+          }
+        }, error = function(e) {})
+      }
+
+      # Add panel samples to the list
+      if (length(panel_samples) > 0) {
+        for (panel_sample in panel_samples) {
+          if (panel_sample %in% sample_list$Sample) {
+            idx <- which(sample_list$Sample == panel_sample)
+            sample_list$In_Panel[idx] <- "Yes"
+          } else {
+            sample_list <- rbind(sample_list, data.frame(
+              Sample = panel_sample,
+              In_Target = "No",
+              In_Truth = "No",
+              In_Panel = "Yes",
+              stringsAsFactors = FALSE
+            ))
+          }
         }
-      }, error = function(e) {
-        # Silently fail if panel samples can't be extracted
-      })
+      }
     }
 
     # Sort by sample name
@@ -1113,6 +1278,7 @@ server <- function(input, output, session) {
     tryCatch({
       # Ensure data is a proper data frame
       maf_data <- as.data.frame(data_store$maf_spectrum)
+      show_by_sample <- input$show_by_sample
 
       # Check if required columns exist
       if (!all(c("MAF", "Dosage_r2", "Tool") %in% names(maf_data))) {
@@ -1127,7 +1293,7 @@ server <- function(input, output, session) {
       maf_data$Tool <- as.character(maf_data$Tool)
 
       # Remove any rows with NA values
-      maf_data <- maf_data[complete.cases(maf_data), ]
+      maf_data <- maf_data[complete.cases(maf_data[, c("MAF", "Dosage_r2", "Tool")]), ]
 
       if (nrow(maf_data) == 0) {
         return(plotly_empty() %>%
@@ -1135,81 +1301,179 @@ server <- function(input, output, session) {
                                    font = list(color = "#999", size = 14))))
       }
 
-      # Sort by MAF for proper line plotting
-      maf_data <- maf_data[order(maf_data$Tool, maf_data$MAF), ]
-
-      # Create plot directly with plotly instead of ggplot
-      tools <- unique(maf_data$Tool)
-      # Use distinct colors for tools
+      # Tool colors
       tool_colors <- c(
         "beagle5" = "#2091ae",    # Light blue
         "glimpse2" = "#9cbe2b",   # Green
         "glimpse1" = "#16315b",   # Navy
         "minimac4" = "#e76f51",   # Orange
         "quilt" = "#f4a261",      # Light orange
-        "stitch" = "#8338ec"      # Purple
+        "stitch" = "#8338ec",     # Purple
+        "unknown" = "#666666"
       )
 
       p <- plot_ly()
 
-      for (i in seq_along(tools)) {
-        tool_data <- maf_data[maf_data$Tool == tools[i], ]
+      if (show_by_sample && "Sample" %in% names(maf_data)) {
+        # Show individual sample lines
+        samples <- unique(maf_data$Sample)
+        for (samp in samples) {
+          sample_data <- maf_data[maf_data$Sample == samp, ]
+          sample_data <- sample_data[order(sample_data$MAF), ]
+          tool <- sample_data$Tool[1]
+          tool_color <- if (tool %in% names(tool_colors)) tool_colors[[tool]] else "#666666"
+          clean_name <- clean_sample_name(samp)
 
-        # Sort by MAF to ensure proper line connection
-        tool_data <- tool_data[order(tool_data$MAF), ]
-
-        # Remove duplicates - keep only one point per MAF value (shouldn't happen but safety check)
-        tool_data <- tool_data[!duplicated(tool_data$MAF), ]
-
-        tool_color <- if (tools[i] %in% names(tool_colors)) tool_colors[[tools[i]]] else "#666666"
-
-        p <- p %>%
-          add_trace(
-            data = tool_data,
-            x = ~MAF,
-            y = ~Dosage_r2,
-            name = tools[i],
-            type = 'scatter',
-            mode = 'lines+markers',
-            line = list(color = tool_color, width = 2, shape = 'linear'),
-            marker = list(
-              color = tool_color,
-              size = 8,
-              line = list(color = 'white', width = 1.5)
-            ),
-            hovertemplate = paste0(
-              '<b>', tools[i], '</b><br>',
-              'MAF: %{x:.3f}<br>',
-              'Dosage r²: %{y:.3f}<br>',
-              '<extra></extra>'
+          p <- p %>%
+            add_trace(
+              data = sample_data,
+              x = ~MAF,
+              y = ~Dosage_r2,
+              name = clean_name,
+              type = 'scatter',
+              mode = 'lines',
+              line = list(color = tool_color, width = 1),
+              opacity = 0.5,
+              hovertemplate = paste0(
+                '<b>', clean_name, '</b><br>',
+                'MAF: %{x:.3f}<br>',
+                'Dosage r²: %{y:.2f}<br>',
+                '<extra></extra>'
+              )
             )
-          )
+        }
+      } else {
+        # Aggregate by tool and MAF bin
+        maf_data$MAF_rounded <- round(maf_data$MAF, 3)
+        tools <- unique(maf_data$Tool)
+
+        for (tool in tools) {
+          tool_subset <- maf_data[maf_data$Tool == tool, ]
+          unique_mafs <- unique(tool_subset$MAF_rounded)
+
+          agg_list <- list()
+          for (maf in unique_mafs) {
+            maf_subset <- tool_subset[tool_subset$MAF_rounded == maf, ]
+            agg_list[[length(agg_list) + 1]] <- data.frame(
+              MAF = maf,
+              Dosage_r2 = mean(maf_subset$Dosage_r2, na.rm = TRUE),
+              stringsAsFactors = FALSE
+            )
+          }
+          agg_data <- do.call(rbind, agg_list)
+          agg_data <- agg_data[order(agg_data$MAF), ]
+
+          tool_color <- if (tool %in% names(tool_colors)) tool_colors[[tool]] else "#666666"
+
+          p <- p %>%
+            add_trace(
+              data = agg_data,
+              x = ~MAF,
+              y = ~Dosage_r2,
+              name = tool,
+              type = 'scatter',
+              mode = 'lines+markers',
+              line = list(color = tool_color, width = 2),
+              marker = list(color = tool_color, size = 8, line = list(color = 'white', width = 1.5)),
+              hovertemplate = paste0(
+                '<b>', tool, '</b><br>',
+                'MAF: %{x:.3f}<br>',
+                'Dosage r²: %{y:.2f}<br>',
+                '<extra></extra>'
+              )
+            )
+        }
       }
 
       p %>%
         layout(
-          title = list(text = "Imputation Quality by MAF Bin", font = list(size = 16)),
           xaxis = list(
             title = "Minor Allele Frequency (MAF)",
+            range = c(0, 0.5),
+            tickmode = "linear",
+            tick0 = 0,
+            dtick = 0.05,
             gridcolor = '#e8e8e8',
             showgrid = TRUE
           ),
           yaxis = list(
-            title = "Mean Dosage r²",
+            title = "Dosage r²",
             range = c(0, 1),
+            tickmode = "linear",
+            tick0 = 0,
+            dtick = 0.1,
             gridcolor = '#e8e8e8',
             showgrid = TRUE
           ),
           hovermode = "x unified",
-          legend = list(title = list(text = "Tool")),
+          showlegend = FALSE,
           plot_bgcolor = 'white',
-          paper_bgcolor = 'white'
+          paper_bgcolor = 'white',
+          margin = list(t = 10, b = 50, l = 60, r = 10)
         )
     }, error = function(e) {
       plotly_empty() %>%
         layout(title = list(text = paste("Error creating plot:", e$message),
                           font = list(color = "#999", size = 14)))
     })
+  })
+
+  # MAF plot legend box (separate from plot)
+  output$maf_legend_box <- renderUI({
+    if (is.null(data_store$maf_spectrum)) return(NULL)
+
+    maf_data <- as.data.frame(data_store$maf_spectrum)
+    show_by_sample <- input$show_by_sample
+
+    # Tool colors
+    tool_colors <- c(
+      "beagle5" = "#2091ae",
+      "glimpse2" = "#9cbe2b",
+      "glimpse1" = "#16315b",
+      "minimac4" = "#e76f51",
+      "quilt" = "#f4a261",
+      "stitch" = "#8338ec",
+      "unknown" = "#666666"
+    )
+
+    if (show_by_sample && "Sample" %in% names(maf_data)) {
+      # Show sample legend with tool colors
+      samples <- unique(maf_data$Sample)
+      legend_items <- lapply(samples, function(samp) {
+        sample_data <- maf_data[maf_data$Sample == samp, ]
+        tool <- sample_data$Tool[1]
+        color <- if (tool %in% names(tool_colors)) tool_colors[[tool]] else "#666666"
+        clean_name <- clean_sample_name(samp)
+        tags$span(
+          style = paste0("display: inline-block; margin-right: 12px; margin-bottom: 4px; font-size: 11px;"),
+          tags$span(style = paste0("display: inline-block; width: 12px; height: 3px; background-color: ", color, "; margin-right: 4px; vertical-align: middle;")),
+          clean_name
+        )
+      })
+
+      tags$div(
+        style = "margin-top: 10px; padding: 10px; background-color: #f8f8f8; border: 1px solid #ddd; border-radius: 4px;",
+        tags$strong(style = "font-size: 11px; display: block; margin-bottom: 6px;", "Samples:"),
+        tags$div(style = "line-height: 1.8;", legend_items)
+      )
+    } else {
+      # Show tool legend
+      tools <- unique(maf_data$Tool)
+      legend_items <- lapply(tools, function(tool) {
+        color <- if (tool %in% names(tool_colors)) tool_colors[[tool]] else "#666666"
+        tags$span(
+          style = paste0("display: inline-block; margin-right: 15px; font-size: 12px;"),
+          tags$span(style = paste0("display: inline-block; width: 20px; height: 3px; background-color: ", color, "; margin-right: 6px; vertical-align: middle;")),
+          tool
+        )
+      })
+
+      tags$div(
+        style = "margin-top: 10px; padding: 10px; background-color: #f8f8f8; border: 1px solid #ddd; border-radius: 4px;",
+        tags$strong(style = "font-size: 12px; margin-right: 10px;", "Tool:"),
+        legend_items
+      )
+    }
   })
 
   # Tool accuracy display
@@ -1242,8 +1506,8 @@ server <- function(input, output, session) {
         # Extract tool from sample name
         tool_data <- as.data.frame(data_store$tool_accuracy)
 
-        # Check if we have the expected columns (N_Variants is optional)
-        required_cols <- c("Sample", "Dosage_r2", "Best_GT_r2", "NonRef_Discordance_Pct")
+        # Check if we have the expected columns
+        required_cols <- c("Sample", "Dosage_r2", "Best_GT_r2", "General_Concordance_Pct", "NonRef_Concordance_Pct")
         missing_cols <- setdiff(required_cols, names(tool_data))
 
         if (length(missing_cols) > 0) {
@@ -1255,76 +1519,12 @@ server <- function(input, output, session) {
 
         # Extract tool name from sample
         tool_data$Tool <- sapply(tool_data$Sample, function(s) {
-          if (grepl("\\.beagle5$", s)) return("beagle5")
-          if (grepl("\\.glimpse2$", s)) return("glimpse2")
-          if (grepl("\\.glimpse1$", s)) return("glimpse1")
-          if (grepl("\\.minimac4$", s)) return("minimac4")
-          if (grepl("\\.quilt$", s)) return("quilt")
-          if (grepl("\\.stitch$", s)) return("stitch")
-          return("unknown")
-        })
-
-        # Convert metrics to numeric
-        tool_data$Dosage_r2 <- as.numeric(tool_data$Dosage_r2)
-        tool_data$Best_GT_r2 <- as.numeric(tool_data$Best_GT_r2)
-        tool_data$NonRef_Discordance_Pct <- as.numeric(tool_data$NonRef_Discordance_Pct)
-
-        # Aggregate by tool using base R
-        tools <- unique(tool_data$Tool)
-        summary_list <- lapply(tools, function(t) {
-          tool_subset <- tool_data[tool_data$Tool == t, ]
-          data.frame(
-            Tool = t,
-            N_Samples = nrow(tool_subset),
-            Mean_Dosage_r2 = round(mean(tool_subset$Dosage_r2, na.rm = TRUE), 4),
-            Mean_Best_GT_r2 = round(mean(tool_subset$Best_GT_r2, na.rm = TRUE), 4),
-            Mean_General_Concordance_Pct = round(mean(tool_subset$General_Concordance_Pct, na.rm = TRUE), 2),
-            Mean_NonRef_Concordance_Pct = round(mean(tool_subset$NonRef_Concordance_Pct, na.rm = TRUE), 2),
-            stringsAsFactors = FALSE
-          )
-        })
-        summary_data <- do.call(rbind, summary_list)
-
-        datatable(as.data.frame(summary_data),
-                  options = list(pageLength = 10, dom = 't', scrollX = TRUE),
-                  rownames = FALSE,
-                  colnames = c("Tool", "N Samples", "Mean Dosage r²", "Mean Best GT r²",
-                              "Mean General Concordance %", "Mean Non-Ref Concordance %"))
-      } else {
-        # Original format
-        datatable(as.data.frame(data_store$tool_accuracy),
-                  options = list(pageLength = 10, dom = 't', scrollX = TRUE),
-                  rownames = FALSE) %>%
-          formatRound(columns = grep("r2|concordance|pct", names(data_store$tool_accuracy), ignore.case = TRUE),
-                      digits = 4)
-      }
-    }, error = function(e) {
-      return(data.frame(Error = paste("Could not parse accuracy data:", e$message)))
-    })
-  })
-
-  # Quality summary plot
-  output$quality_summary_plot <- renderPlotly({
-    if (is.null(data_store$tool_accuracy)) {
-      return(plotly_empty() %>%
-               layout(title = list(text = "N/A - No validation data available",
-                                 font = list(color = "#999", size = 14))))
-    }
-
-    tryCatch({
-      # Handle both formats
-      if ("Sample" %in% names(data_store$tool_accuracy)) {
-        # GLIMPSE format - calculate means by tool
-        tool_data <- as.data.frame(data_store$tool_accuracy)
-
-        # Extract tool name from sample
-        tool_data$Tool <- sapply(tool_data$Sample, function(s) {
-          if (grepl("\\.beagle5$", s)) return("beagle5")
-          if (grepl("\\.glimpse2$", s)) return("glimpse2")
-          if (grepl("\\.glimpse1$", s)) return("glimpse1")
-          if (grepl("\\.minimac4$", s)) return("minimac4")
-          if (grepl("\\.quilt$", s)) return("quilt")
-          if (grepl("\\.stitch$", s)) return("stitch")
+          if (grepl("Tbeagle5$|_beagle5$|\\.beagle5$", s)) return("beagle5")
+          if (grepl("Tglimpse2$|_glimpse2$|\\.glimpse2$", s)) return("glimpse2")
+          if (grepl("Tglimpse1$|_glimpse1$|\\.glimpse1$", s)) return("glimpse1")
+          if (grepl("Tminimac4$|_minimac4$|\\.minimac4$", s)) return("minimac4")
+          if (grepl("Tquilt$|_quilt$|\\.quilt$", s)) return("quilt")
+          if (grepl("Tstitch$|_stitch$|\\.stitch$", s)) return("stitch")
           return("unknown")
         })
 
@@ -1335,101 +1535,37 @@ server <- function(input, output, session) {
         tool_data$NonRef_Concordance_Pct <- as.numeric(tool_data$NonRef_Concordance_Pct)
 
         # Aggregate by tool using base R
+        # Order: General Concordance, Non-Ref Concordance, Dosage r², Best GT r²
         tools <- unique(tool_data$Tool)
         summary_list <- lapply(tools, function(t) {
           tool_subset <- tool_data[tool_data$Tool == t, ]
           data.frame(
             Tool = t,
-            Dosage_r2 = mean(tool_subset$Dosage_r2, na.rm = TRUE),
-            Best_GT_r2 = mean(tool_subset$Best_GT_r2, na.rm = TRUE),
-            General_Concordance = mean(tool_subset$General_Concordance_Pct, na.rm = TRUE),
-            NonRef_Concordance = mean(tool_subset$NonRef_Concordance_Pct, na.rm = TRUE),
+            N_Samples = nrow(tool_subset),
+            Mean_General_Concordance_Pct = round(mean(tool_subset$General_Concordance_Pct, na.rm = TRUE), 1),
+            Mean_NonRef_Concordance_Pct = round(mean(tool_subset$NonRef_Concordance_Pct, na.rm = TRUE), 1),
+            Mean_Dosage_r2 = round(mean(tool_subset$Dosage_r2, na.rm = TRUE), 2),
+            Mean_Best_GT_r2 = round(mean(tool_subset$Best_GT_r2, na.rm = TRUE), 2),
             stringsAsFactors = FALSE
           )
         })
         summary_data <- do.call(rbind, summary_list)
 
-        # Reshape to long format for plotting using base R
-        # Convert r² values to percentages (multiply by 100)
-        metrics <- data.frame(
-          Tool = rep(summary_data$Tool, 4),
-          Metric = rep(c("Dosage r²", "Best GT r²", "General Concordance", "Non-Ref Concordance"), each = nrow(summary_data)),
-          Value = c(summary_data$Dosage_r2 * 100, summary_data$Best_GT_r2 * 100, summary_data$General_Concordance, summary_data$NonRef_Concordance),
-          stringsAsFactors = FALSE
-        )
-
-        # Ensure numeric values
-        metrics$Value <- as.numeric(metrics$Value)
-
-        # Create plot directly with plotly
-        tools <- unique(metrics$Tool)
-        metric_names <- unique(metrics$Metric)
-        colors <- RColorBrewer::brewer.pal(max(3, length(tools)), "Set2")[1:length(tools)]
-
-        p <- plot_ly()
-
-        for (i in seq_along(tools)) {
-          tool_data <- metrics[metrics$Tool == tools[i], ]
-          p <- p %>%
-            add_trace(
-              data = tool_data,
-              x = ~Metric,
-              y = ~Value,
-              name = tools[i],
-              type = 'bar',
-              marker = list(color = colors[i])
-            )
-        }
-
-        p <- p %>%
-          layout(
-            xaxis = list(
-              title = "",
-              tickangle = 0,
-              tickmode = "array",
-              tickvals = 0:3,
-              ticktext = c("Dosage r²", "Best GT r²", "General<br>Concordance", "Non-Ref<br>Concordance")
-            ),
-            yaxis = list(title = "Value (%)", range = c(0, 100)),
-            barmode = 'group',
-            legend = list(title = list(text = "Tool")),
-            margin = list(t = 10, b = 70)
-          )
-
+        datatable(as.data.frame(summary_data),
+                  options = list(pageLength = 10, dom = 't', scrollX = TRUE),
+                  rownames = FALSE,
+                  colnames = c("Tool", "N Samples", "General Concordance %", "Non-Ref Concordance %",
+                              "Dosage r²", "Best GT r²"))
       } else {
         # Original format
-        metrics_data <- data_store$tool_accuracy[1, ]
-        metric_names <- names(metrics_data)[grepl("Mean_", names(metrics_data))]
-
-        metrics <- data.frame(
-          Metric = gsub("Mean_", "", gsub("_", " ", metric_names)),
-          Value = as.numeric(metrics_data[metric_names]),
-          stringsAsFactors = FALSE
-        )
-
-        colors <- RColorBrewer::brewer.pal(max(3, nrow(metrics)), "Set2")[1:nrow(metrics)]
-
-        p <- plot_ly(
-          data = metrics,
-          x = ~Value,
-          y = ~reorder(Metric, Value),
-          type = 'bar',
-          orientation = 'h',
-          marker = list(color = colors)
-        ) %>%
-          layout(
-            xaxis = list(title = "Value"),
-            yaxis = list(title = ""),
-            showlegend = FALSE,
-            margin = list(t = 10)
-          )
+        datatable(as.data.frame(data_store$tool_accuracy),
+                  options = list(pageLength = 10, dom = 't', scrollX = TRUE),
+                  rownames = FALSE) %>%
+          formatRound(columns = grep("r2|concordance|pct", names(data_store$tool_accuracy), ignore.case = TRUE),
+                      digits = 2)
       }
-
-      return(p)
     }, error = function(e) {
-      plotly_empty() %>%
-        layout(title = list(text = paste("Error:", e$message),
-                          font = list(color = "#999")))
+      return(data.frame(Error = paste("Could not parse accuracy data:", e$message)))
     })
   })
 
@@ -1451,30 +1587,28 @@ server <- function(input, output, session) {
     # Try GLIMPSE accuracy first, then validation_data
     if (!is.null(data_store$tool_accuracy) && "Sample" %in% names(data_store$tool_accuracy)) {
       # Use GLIMPSE per-sample accuracy
+      # Order: General Concordance, Non-Ref Concordance, Dosage r², Best GT r²
       dt <- datatable(data_store$tool_accuracy,
                 options = list(pageLength = 15, scrollX = TRUE),
                 rownames = FALSE,
-                colnames = c('Sample', 'N Variants', 'Best GT r²', 'Dosage r²',
-                            'General Concordance %', 'Non-Ref Concordance %', 'Non-Ref Discordance %'))
+                colnames = c('Sample', 'N Variants', 'General Concordance %', 'Non-Ref Concordance %',
+                            'Dosage r²', 'Best GT r²'))
 
-      # Format numeric columns
+      # Format numeric columns: 1 decimal for percentages, 2 decimals for r²
       if ("N_Variants" %in% names(data_store$tool_accuracy)) {
         dt <- dt %>% formatCurrency("N_Variants", currency = "", digits = 0, mark = ",")
       }
-      if ("Dosage_r2" %in% names(data_store$tool_accuracy)) {
-        dt <- dt %>% formatRound("Dosage_r2", digits = 4)
-      }
-      if ("Best_GT_r2" %in% names(data_store$tool_accuracy)) {
-        dt <- dt %>% formatRound("Best_GT_r2", digits = 4)
-      }
       if ("General_Concordance_Pct" %in% names(data_store$tool_accuracy)) {
-        dt <- dt %>% formatRound("General_Concordance_Pct", digits = 2)
+        dt <- dt %>% formatRound("General_Concordance_Pct", digits = 1)
       }
       if ("NonRef_Concordance_Pct" %in% names(data_store$tool_accuracy)) {
-        dt <- dt %>% formatRound("NonRef_Concordance_Pct", digits = 2)
+        dt <- dt %>% formatRound("NonRef_Concordance_Pct", digits = 1)
       }
-      if ("NonRef_Discordance_Pct" %in% names(data_store$tool_accuracy)) {
-        dt <- dt %>% formatRound("NonRef_Discordance_Pct", digits = 2)
+      if ("Dosage_r2" %in% names(data_store$tool_accuracy)) {
+        dt <- dt %>% formatRound("Dosage_r2", digits = 2)
+      }
+      if ("Best_GT_r2" %in% names(data_store$tool_accuracy)) {
+        dt <- dt %>% formatRound("Best_GT_r2", digits = 2)
       }
 
       return(dt)
@@ -1497,7 +1631,8 @@ server <- function(input, output, session) {
         datatable(sample_summary,
                   options = list(pageLength = 10, scrollX = TRUE),
                   rownames = FALSE) %>%
-          formatRound(columns = c("Mean_AF"), digits = 4)
+          formatRound(columns = c("Mean_AF"), digits = 2) %>%
+          formatRound(columns = c("Accuracy_Pct"), digits = 1)
       }, error = function(e) {
         return(data.frame(Error = "Could not parse validation data"))
       })
@@ -1506,7 +1641,204 @@ server <- function(input, output, session) {
     }
   })
 
-  # Chromosome accuracy and INFO scores removed - not feasible with current pipeline
+  # Per-chromosome stats table
+  output$chr_stats_table <- renderDT({
+    if (is.null(data_store$per_chr_stats)) {
+      return(data.frame(Info = "No per-chromosome data available. Run the pipeline with --steps impute or validate to generate per_chromosome_stats.csv"))
+    }
+
+    df <- data_store$per_chr_stats
+
+    # Sort chromosomes naturally
+    df$chr <- factor(df$chr, levels = sort_chromosomes(unique(df$chr)))
+    df <- df[order(df$chr, df$tool), ]
+
+    # Convert concordance from decimal (0-1) to percentage (0-100)
+    df$general_concordance <- as.numeric(df$general_concordance) * 100
+    df$non_ref_concordance <- as.numeric(df$non_ref_concordance) * 100
+
+    # Reorder columns: chr, tool, snps_before, snps_after, general_conc, non_ref_conc, dosage_r2, best_gt_r2
+    df <- df[, c("chr", "tool", "snps_before_imputation", "snps_after_imputation",
+                 "general_concordance", "non_ref_concordance", "dosage_r2", "best_gt_r2")]
+
+    # Format column names for display (with line breaks for long headers)
+    colnames(df) <- c("Chr", "Tool", "SNPs<br>Before", "SNPs<br>After",
+                      "General<br>Conc %", "Non-Ref<br>Conc %", "Dosage<br>r²", "Best GT<br>r²")
+
+    datatable(df,
+              options = list(
+                pageLength = 25,
+                scrollX = TRUE,
+                dom = 'frtip',
+                autoWidth = FALSE
+              ),
+              rownames = FALSE,
+              escape = FALSE) %>%  # escape=FALSE allows HTML in column names
+      formatRound(columns = c("General<br>Conc %", "Non-Ref<br>Conc %"), digits = 1) %>%
+      formatRound(columns = c("Dosage<br>r²", "Best GT<br>r²"), digits = 2) %>%
+      formatCurrency(columns = c("SNPs<br>Before", "SNPs<br>After"),
+                    currency = "", digits = 0, mark = ",")
+  })
+
+  # Per-chromosome SNP counts plot
+  output$chr_snp_plot <- renderPlotly({
+    if (is.null(data_store$per_chr_stats)) {
+      return(plotly_empty() %>%
+               layout(title = list(text = "N/A - No per-chromosome data available",
+                                 font = list(color = "#999", size = 14))))
+    }
+
+    df <- data_store$per_chr_stats
+
+    # Convert SNP columns to numeric, handling "NA" strings
+    df$snps_before_imputation <- as.numeric(df$snps_before_imputation)
+    df$snps_after_imputation <- as.numeric(df$snps_after_imputation)
+
+    # Sort chromosomes naturally
+    chr_order <- sort_chromosomes(unique(df$chr))
+    df$chr <- factor(df$chr, levels = chr_order)
+
+    # Get unique tools
+    tools <- unique(df$tool)
+
+    # Create grouped bar chart
+    p <- plot_ly()
+
+    # Add bars for each tool
+    tool_colors <- c(
+      "beagle5" = "#2091ae",
+      "glimpse2" = "#9cbe2b",
+      "glimpse1" = "#16315b",
+      "minimac4" = "#e76f51",
+      "quilt" = "#f4a261",
+      "stitch" = "#8338ec"
+    )
+
+    for (tool in tools) {
+      tool_data <- df[df$tool == tool, ]
+      tool_color <- if (tool %in% names(tool_colors)) tool_colors[[tool]] else "#666666"
+
+      # Before imputation bars (lighter shade)
+      p <- p %>%
+        add_trace(
+          data = tool_data,
+          x = ~chr,
+          y = ~snps_before_imputation,
+          name = paste(tool, "- Before"),
+          type = 'bar',
+          marker = list(color = tool_color, opacity = 0.5),
+          hovertemplate = paste0(
+            '<b>', tool, ' - Before</b><br>',
+            'Chr: %{x}<br>',
+            'SNPs: %{y:,.0f}<br>',
+            '<extra></extra>'
+          )
+        )
+
+      # After imputation bars (solid)
+      p <- p %>%
+        add_trace(
+          data = tool_data,
+          x = ~chr,
+          y = ~snps_after_imputation,
+          name = paste(tool, "- After"),
+          type = 'bar',
+          marker = list(color = tool_color),
+          hovertemplate = paste0(
+            '<b>', tool, ' - After</b><br>',
+            'Chr: %{x}<br>',
+            'SNPs: %{y:,.0f}<br>',
+            '<extra></extra>'
+          )
+        )
+    }
+
+    p %>%
+      layout(
+        xaxis = list(title = "", tickangle = 45),
+        yaxis = list(title = "SNP Count"),
+        barmode = 'group',
+        legend = list(orientation = "h", y = -0.3, x = 0.5, xanchor = "center"),
+        hovermode = "x unified",
+        margin = list(b = 80)
+      )
+  })
+
+  # Per-chromosome accuracy plot
+  output$chr_accuracy_plot <- renderPlotly({
+    if (is.null(data_store$per_chr_stats)) {
+      return(plotly_empty() %>%
+               layout(title = list(text = "N/A - No per-chromosome data available",
+                                 font = list(color = "#999", size = 14))))
+    }
+
+    df <- data_store$per_chr_stats
+
+    # Convert accuracy columns to numeric, handling "NA" strings
+    df$dosage_r2 <- as.numeric(df$dosage_r2)
+
+    # Check if all accuracy values are NA (no validation data)
+    if (all(is.na(df$dosage_r2))) {
+      return(plotly_empty() %>%
+               layout(title = list(text = "N/A - No validation data available (run with --input_truth)",
+                                 font = list(color = "#999", size = 14))))
+    }
+
+    # Sort chromosomes naturally
+    chr_order <- sort_chromosomes(unique(df$chr))
+    df$chr <- factor(df$chr, levels = chr_order)
+
+    # Get unique tools
+    tools <- unique(df$tool)
+
+    tool_colors <- c(
+      "beagle5" = "#2091ae",
+      "glimpse2" = "#9cbe2b",
+      "glimpse1" = "#16315b",
+      "minimac4" = "#e76f51",
+      "quilt" = "#f4a261",
+      "stitch" = "#8338ec"
+    )
+
+    p <- plot_ly()
+
+    for (tool in tools) {
+      tool_data <- df[df$tool == tool, ]
+      tool_data <- tool_data[order(tool_data$chr), ]
+      tool_color <- if (tool %in% names(tool_colors)) tool_colors[[tool]] else "#666666"
+
+      # Dosage r² line only
+      p <- p %>%
+        add_trace(
+          data = tool_data,
+          x = ~chr,
+          y = ~dosage_r2,
+          name = tool,
+          type = 'scatter',
+          mode = 'lines+markers',
+          line = list(color = tool_color, width = 2),
+          marker = list(color = tool_color, size = 6),
+          hovertemplate = paste0(
+            '<b>', tool, '</b><br>',
+            'Chr: %{x}<br>',
+            'Dosage r²: %{y:.2f}<br>',
+            '<extra></extra>'
+          )
+        )
+    }
+
+    p %>%
+      layout(
+        xaxis = list(title = "", tickangle = 45),
+        yaxis = list(title = "Dosage r²", range = c(
+          max(0, min(df$dosage_r2, na.rm = TRUE) - 0.05),
+          1
+        )),
+        legend = list(orientation = "h", y = -0.3, x = 0.5, xanchor = "center"),
+        hovermode = "x unified",
+        margin = list(b = 80)
+      )
+  })
 }
 
 # Run the application
