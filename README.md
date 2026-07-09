@@ -125,6 +125,40 @@ add `-resume` after debugging, cached processes will be reused.
 | `--outdir` | Directory where results will be saved |
 | `-profile` | Profile to be used. For HPC use: slurm. For Azure use: azure. |
 
+### Resource Allocation
+
+The pipeline automatically allocates resources based on species (for genome/panel size) and sample count. Use `--sample_scale` to match your target sample count:
+
+| `--sample_scale` | Target samples | Use case |
+|------------------|----------------|----------|
+| `low` | < 500 | Small studies, testing |
+| `medium` (default) | 500 - 2000 | Typical production runs |
+| `high` | > 2000 | Large production runs (5000+ samples can take 5+ days for splitting) |
+
+**Example for large pig run with 4000 samples:**
+```bash
+nextflow run /path/to/phaseimpute \
+  --species pig \
+  --sample_scale high \
+  --genome Sscrofa11.1 \
+  --input target.csv \
+  --panel panel.csv \
+  --steps impute \
+  --tools beagle5 \
+  --outdir results \
+  -profile slurm
+```
+
+> **Note:** Species configs handle panel-size-dependent resources automatically (e.g., pig ~65M variants gets higher memory than chicken ~11M). The `--sample_scale` parameter handles sample-count-dependent processes like `BCFTOOLS_PLUGINSPLIT` which scales dramatically with sample count.
+
+**Skip splitting for faster runs:** If you don't need per-sample VCF files or per-sample stats, you can skip the expensive `BCFTOOLS_PLUGINSPLIT` step entirely:
+
+```bash
+--split_imputed false
+```
+
+This can save days of runtime for large datasets (5000+ samples). The concatenated multi-sample VCF will still be produced.
+
 
 ### Pipeline Steps
 

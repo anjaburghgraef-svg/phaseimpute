@@ -34,7 +34,7 @@
                 "pattern": "^\\S+(\\.mix|\\.map)$",
                 "errorMessage": "Mixblup map file (map.mix) with SNP positions and alleles must be provided and cannot contain spaces"
             },
-            "snp_details": {
+            "manifest": {
                 "type": "string",
                 "format": "file-path",
                 "exists": true,
@@ -42,6 +42,6 @@
                 "errorMessage": "SNP details file (.txt) with Y/N marker filter must be provided and cannot contain spaces"
             }
         },
-        "required": ["sample", "gtp", "ped", "map", "snp_details"]
+        "required": ["sample", "gtp", "ped", "map", "manifest"]
     }
 }

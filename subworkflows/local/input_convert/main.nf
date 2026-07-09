@@ -15,7 +15,7 @@ workflow INPUT_CONVERT {
     take:
     ch_input_plink_binary  // channel: [ [meta], bed, bim, fam ]
     ch_input_plink_text    // channel: [ [meta], ped, map ]
-    ch_input_mixblup       // channel: [ [meta], gtp, ped, map_mix, snp_details ]
+    ch_input_mixblup       // channel: [ [meta], gtp, ped, map_mix, manifest ]
 
     main:
     ch_versions = Channel.empty()

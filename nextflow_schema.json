@@ -19,6 +19,14 @@
                     "fa_icon": "fas fa-paw",
                     "enum": ["layer", "broiler", "turkey", "pig", "salmon", "trout", "shrimp"]
                 },
+                "sample_scale": {
+                    "type": "string",
+                    "description": "Resource allocation scale based on number of target samples to impute.",
+                    "help_text": "Select based on your target sample count:\n- low: < 500 samples (small studies, testing)\n- medium: 500-2000 samples (typical production runs) - DEFAULT\n- high: > 2000 samples (large production runs, 5000+ samples)\n\nThis parameter controls resources for sample-count-dependent processes like BCFTOOLS_PLUGINSPLIT (which can take 5+ days for 5000 samples). Species config handles panel-size-dependent resources separately.",
+                    "fa_icon": "fas fa-memory",
+                    "enum": ["low", "medium", "high"],
+                    "default": "medium"
+                },
                 "input": {
                     "type": "string",
                     "format": "file-path",

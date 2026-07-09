@@ -198,14 +198,14 @@ workflow PIPELINE_INITIALISATION {
 
         } else if (inputFormat == 'mixblup') {
             // Mixblup input - needs conversion to PLINK then VCF
-            // samplesheetToList returns [meta, gtp, ped, map, snp_details] tuples
+            // samplesheetToList returns [meta, gtp, ped, map, manifest] tuples
             ch_input = Channel.empty()
             ch_input_plink_binary = Channel.empty()
             ch_input_plink_text = Channel.empty()
             ch_input_mixblup = Channel
                 .fromList(samplesheetToList(params.input, "${projectDir}/assets/schema_input_mixblup.json"))
-                .map { meta, gtp, ped, map_mix, snp_details ->
-                    [ meta + [id: meta.id.toString()], gtp, ped, map_mix, snp_details ]
+                .map { meta, gtp, ped, map_mix, manifest ->
+                    [ meta + [id: meta.id.toString()], gtp, ped, map_mix, manifest ]
                 }
         }
 
@@ -783,7 +783,7 @@ def detectInputFormat(csvPath) {
         return 'plink_binary'
     } else if (headers.containsAll(['sample', 'ped', 'map']) && !headers.contains('gtp')) {
         return 'plink_text'
-    } else if (headers.containsAll(['sample', 'gtp', 'ped', 'map', 'snp_details'])) {
+    } else if (headers.containsAll(['sample', 'gtp', 'ped', 'map', 'manifest'])) {
         return 'mixblup'
     } else if (headers.containsAll(['sample', 'file', 'index'])) {
         return 'vcf'
@@ -796,7 +796,7 @@ def detectInputFormat(csvPath) {
           VCF:          sample,file,index
           PLINK binary: sample,bed,bim,fam
           PLINK text:   sample,ped,map
-          Mixblup:      sample,gtp,ped,map,snp_details
+          Mixblup:      sample,gtp,ped,map,manifest
         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         """
     }

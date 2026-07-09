@@ -2,7 +2,7 @@
 // Converts Mixblup format files to PLINK binary format
 //
 // map.mix format: index snp_name alleles(2chars) chromosome position
-// snp_details.txt format: snp_name Y/N value (Y=include marker)
+// manifest format: snp_name Y/N value (Y=include marker)
 // gtp.mix format: sample_id followed by 0/1/2 genotypes (no spaces between genotypes)
 
 process MIXBLUP_TO_PLINK {
@@ -15,7 +15,7 @@ process MIXBLUP_TO_PLINK {
         'quay.io/biocontainers/plink:1.90b6.21--h779adbc_1' }"
 
     input:
-    tuple val(meta), path(gtp), path(ped), path(map_mix), path(snp_details)
+    tuple val(meta), path(gtp), path(ped), path(map_mix), path(manifest)
 
     output:
     tuple val(meta), path("*.bed"), path("*.bim"), path("*.fam"), emit: plink
@@ -30,8 +30,8 @@ process MIXBLUP_TO_PLINK {
     def chr_set = params.chr_set ? "--chr-set ${params.chr_set}" : ""
 
     """
-    # Step 1: Build list of markers to include (Y in snp_details)
-    awk '\$2 == "Y" {print \$1}' ${snp_details} > included_snps.txt
+    # Step 1: Build list of markers to include (Y in manifest)
+    awk '\$2 == "Y" {print \$1}' ${manifest} > included_snps.txt
     echo "Markers to include: \$(wc -l < included_snps.txt)"
 
     # Step 2: Create filtered map file and allele lookup
