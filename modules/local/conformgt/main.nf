@@ -1,6 +1,6 @@
 process CONFORMGT {
     tag "$meta.id"
-    label 'process_medium'
+    label 'process_high'
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
@@ -73,12 +73,28 @@ process CONFORMGT {
 
     # Concatenate all chromosome outputs into ONE file
     if ls *.tmp.vcf.gz 1>/dev/null 2>&1; then
-        echo "Indexing and concatenating output files..." >&2
-        # Index each tmp file first
+        echo "Validating and indexing output files..." >&2
+        # Validate each tmp file is a proper BGZF file before indexing
+        valid_files=""
         for f in *.tmp.vcf.gz; do
-            bcftools index -t \$f
+            if bcftools view -h "\$f" >/dev/null 2>&1; then
+                bcftools index -t \$f
+                valid_files="\$valid_files \$f"
+            else
+                echo "WARNING: Corrupted or incomplete file \$f (possibly OOM killed), skipping..." >&2
+                rm -f "\$f"
+            fi
         done
-        bcftools concat -Oz -o ${meta.id}.conformed.vcf.gz *.tmp.vcf.gz
+
+        if [ -z "\$valid_files" ]; then
+            echo "ERROR: No valid output files after validation" >&2
+            echo "This usually means the process ran out of memory." >&2
+            echo "Try increasing memory allocation for CONFORMGT process." >&2
+            exit 1
+        fi
+
+        echo "Concatenating valid files:\$valid_files" >&2
+        bcftools concat -Oz -o ${meta.id}.conformed.vcf.gz \$valid_files
         bcftools index -t ${meta.id}.conformed.vcf.gz
         rm -f *.tmp.vcf.gz *.tmp.vcf.gz.tbi *.tmp.log
         echo "Successfully created ${meta.id}.conformed.vcf.gz" >&2
