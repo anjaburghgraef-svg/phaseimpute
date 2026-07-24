@@ -1,6 +1,7 @@
 process CONFORMGT {
     tag "$meta.id"
     label 'process_high'
+    cache 'lenient'
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
@@ -24,6 +25,7 @@ process CONFORMGT {
     script:
     def match_mode = task.ext.args ?: "POS"
     def chrom_list = chromosomes.join(' ')
+    def num_chromosomes = chromosomes.size()
     """
     #!/bin/bash
     set -euo pipefail
@@ -32,8 +34,13 @@ process CONFORMGT {
     echo "Java version:" >&2
     java -version 2>&1 || { echo "ERROR: Java not found" >&2; exit 1; }
     echo "Working directory: \$(pwd)" >&2
+    echo "Memory allocated: \${SLURM_MEM_PER_NODE:-unknown}MB" >&2
+    echo "Expected chromosomes: ${num_chromosomes}" >&2
     echo "Panel files found:" >&2
     ls -la *.vcf.gz 2>&1 | head -20 >&2
+
+    # Track failed chromosomes
+    failed_chroms=""
 
     # Process each chromosome
     processed=0
@@ -54,28 +61,40 @@ process CONFORMGT {
             # Remove any existing output to avoid "file exists" error
             rm -f ${meta.id}.\$chr.tmp.vcf.gz ${meta.id}.\$chr.tmp.log
 
-            java -jar ${conformgt_jar} \\
+            if java -jar ${conformgt_jar} \\
                 ref=\$panel_file \\
                 gt=${target_vcf} \\
                 match=${match_mode} \\
                 chrom=\$chr \\
-                out=${meta.id}.\$chr.tmp 2>&1 || echo "WARNING: conform-gt failed for \$chr, continuing..." >&2
+                out=${meta.id}.\$chr.tmp 2>&1; then
 
-            if [ -f "${meta.id}.\$chr.tmp.vcf.gz" ]; then
-                processed=\$((processed + 1))
+                if [ -f "${meta.id}.\$chr.tmp.vcf.gz" ]; then
+                    processed=\$((processed + 1))
+                else
+                    echo "WARNING: conform-gt completed but no output for \$chr" >&2
+                    failed_chroms="\$failed_chroms \$chr"
+                fi
+            else
+                echo "WARNING: conform-gt failed for \$chr (exit code \$?)" >&2
+                failed_chroms="\$failed_chroms \$chr"
             fi
         else
             echo "WARNING: No panel file found for \$chr" >&2
+            failed_chroms="\$failed_chroms \$chr"
         fi
     done
 
-    echo "Processed \$processed chromosomes" >&2
+    echo "Processed \$processed/${num_chromosomes} chromosomes" >&2
+    if [ -n "\$failed_chroms" ]; then
+        echo "Failed chromosomes:\$failed_chroms" >&2
+    fi
 
     # Concatenate all chromosome outputs into ONE file
     if ls *.tmp.vcf.gz 1>/dev/null 2>&1; then
         echo "Validating and indexing output files..." >&2
         # Validate each tmp file is a proper BGZF file before indexing
         valid_files=""
+        corrupted_count=0
         for f in *.tmp.vcf.gz; do
             if bcftools view -h "\$f" >/dev/null 2>&1; then
                 bcftools index -t \$f
@@ -83,6 +102,7 @@ process CONFORMGT {
             else
                 echo "WARNING: Corrupted or incomplete file \$f (possibly OOM killed), skipping..." >&2
                 rm -f "\$f"
+                corrupted_count=\$((corrupted_count + 1))
             fi
         done
 
@@ -93,11 +113,24 @@ process CONFORMGT {
             exit 1
         fi
 
+        # Count valid files
+        valid_count=\$(echo \$valid_files | wc -w)
+        echo "Valid files: \$valid_count/${num_chromosomes}, Corrupted: \$corrupted_count" >&2
+
+        # FAIL if ANY chromosomes are missing/corrupted - all must succeed for imputation
+        if [ \$valid_count -ne ${num_chromosomes} ]; then
+            echo "ERROR: Only \$valid_count/${num_chromosomes} chromosomes succeeded (ALL required)" >&2
+            echo "Missing chromosomes will cause downstream imputation to fail." >&2
+            echo "This usually indicates OOM issues. Increase memory allocation for CONFORMGT." >&2
+            echo "Current memory: \${SLURM_MEM_PER_NODE:-unknown}MB" >&2
+            exit 1
+        fi
+
         echo "Concatenating valid files:\$valid_files" >&2
         bcftools concat -Oz -o ${meta.id}.conformed.vcf.gz \$valid_files
         bcftools index -t ${meta.id}.conformed.vcf.gz
         rm -f *.tmp.vcf.gz *.tmp.vcf.gz.tbi *.tmp.log
-        echo "Successfully created ${meta.id}.conformed.vcf.gz" >&2
+        echo "Successfully created ${meta.id}.conformed.vcf.gz with \$valid_count chromosomes" >&2
     else
         echo "ERROR: No output files created after processing \$processed chromosomes" >&2
         echo "Files in directory:" >&2
