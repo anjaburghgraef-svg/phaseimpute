@@ -53,9 +53,12 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# Pick a random port between 3000-4000 to avoid conflicts
+PORT=$(shuf -i 3000-4000 -n 1)
+
 echo ""
 echo "Starting Shiny app..."
-echo "Access at: http://localhost:3838"
+echo "Access at: http://localhost:${PORT}"
 echo ""
 echo "In the app:"
 echo "  1. Enter your output directory path"
@@ -71,5 +74,5 @@ export R_LIBS_USER="$R_LIB_DIR"
 # Run Rscript with the app
 Rscript -e "
 .libPaths(c('$R_LIB_DIR', .libPaths()))
-shiny::runApp('app.R', host = '0.0.0.0', port = 3838, launch.browser = FALSE)
+shiny::runApp('app.R', host = '0.0.0.0', port = ${PORT}, launch.browser = FALSE)
 "
